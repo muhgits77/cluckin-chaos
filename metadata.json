@@ -1,0 +1,6 @@
+{
+  "name": "Cluckin' Chaos",
+  "description": "Cluckin' Chaos Food Truck - Pure Fried Chicken Mayhem on Wheels in Kentucky",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
