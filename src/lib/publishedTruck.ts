@@ -1,14 +1,11 @@
 /**
- * TruckDash → Cluckin Chaos sync.
- * Source of truth: Supabase `published_trucks` (one row per truck_id).
+ * Cluckin Chaos live data — fetched from Supabase Storage menu-data bucket.
+ * Path: menu-data/{truckId}/menu.json
+ * Images: public URLs in menu-images bucket (set by TruckDash on publish).
  */
 
-import {
-  getSupabase,
-  getSupabaseConfigHint,
-  getSupabaseUrl,
-  isSupabaseConfigured,
-} from './supabase';
+import { fetchMenuJsonFromStorage } from './fetchMenuJson';
+import { getSupabaseConfigHint, isSupabaseConfigured } from './supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,42 +46,20 @@ export type PublishedPayload = {
   version: number;
 };
 
-type PublishedTruckRow = {
-  truck_id: string;
-  truck_name: string;
-  phone: string;
-  order_url: string;
-  location: string;
-  hours_start: string;
-  hours_end: string;
-  special: string;
-  menu: unknown;
-  schedule: unknown;
-  last_published: string | null;
-  version: number | null;
-};
-
 export type FetchPublishedResult = {
   ok: boolean;
   data: PublishedPayload | null;
   truckId: string;
   error: string | null;
-  rawRow: unknown;
 };
 
-// ── Config ───────────────────────────────────────────────────────────────────
-
-const SELECT =
-  'truck_id, truck_name, phone, order_url, location, hours_start, hours_end, special, menu, schedule, last_published, version';
-
-const POLL_LOG_PREFIX = '[publishedTruck]';
+const LOG = '[publishedTruck]';
 
 export function getTruckId(): string {
-  const env = import.meta.env.VITE_TRUCK_ID?.trim();
-  return env || 'cluckin-chaos';
+  return import.meta.env.VITE_TRUCK_ID?.trim() || 'cluckin-chaos';
 }
 
-// ── Item keys (id → name fallback) ───────────────────────────────────────────
+// ── Item keys ────────────────────────────────────────────────────────────────
 
 export function normalizeName(name: string): string {
   return name
@@ -94,7 +69,6 @@ export function normalizeName(name: string): string {
     .trim();
 }
 
-/** Match key for sync diffing — TruckDash id first, normalized name second. */
 export function menuItemKey(item: PublishedMenuItem): string {
   const id = item.id?.trim();
   if (id) return `id:${id}`;
@@ -102,7 +76,6 @@ export function menuItemKey(item: PublishedMenuItem): string {
   return name ? `name:${name}` : 'unknown';
 }
 
-/** Stable cart / React id. */
 export function menuItemSiteId(item: PublishedMenuItem): string {
   const id = item.id?.trim();
   if (id) return `live-${id}`;
@@ -110,7 +83,6 @@ export function menuItemSiteId(item: PublishedMenuItem): string {
   return slug ? `live-name-${slug}` : 'live-unknown';
 }
 
-/** React list key — remounts on price or name change. */
 export function menuItemListKey(item: PublishedMenuItem): string {
   return `${menuItemKey(item)}|${item.price}|${item.name}`;
 }
@@ -138,7 +110,7 @@ export function diffMenu(
   return { added, removed, updated };
 }
 
-// ── Parse Supabase JSONB ─────────────────────────────────────────────────────
+// ── Parse JSON ───────────────────────────────────────────────────────────────
 
 function parseMenuItem(raw: unknown, index: number): PublishedMenuItem | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -158,10 +130,6 @@ function parseMenuItem(raw: unknown, index: number): PublishedMenuItem | null {
         ? String(o.price)
         : '';
 
-  const tags = Array.isArray(o.tags)
-    ? o.tags.filter((t): t is string => typeof t === 'string' && !!t.trim())
-    : undefined;
-
   return {
     id,
     name,
@@ -170,23 +138,22 @@ function parseMenuItem(raw: unknown, index: number): PublishedMenuItem | null {
     category: typeof o.category === 'string' ? o.category.trim() : undefined,
     image: typeof o.image === 'string' ? o.image.trim() : undefined,
     note: typeof o.note === 'string' ? o.note.trim() : undefined,
-    tags,
+    tags: Array.isArray(o.tags)
+      ? o.tags.filter((t): t is string => typeof t === 'string')
+      : undefined,
   };
 }
 
 export function parseMenu(value: unknown): PublishedMenuItem[] {
   if (!Array.isArray(value)) return [];
-  const items: PublishedMenuItem[] = [];
   const seen = new Set<string>();
+  const items: PublishedMenuItem[] = [];
 
   for (let i = 0; i < value.length; i++) {
     const item = parseMenuItem(value[i], i);
     if (!item) continue;
     const key = menuItemKey(item);
-    if (seen.has(key)) {
-      console.warn(POLL_LOG_PREFIX, 'duplicate menu key skipped', key, item);
-      continue;
-    }
+    if (seen.has(key)) continue;
     seen.add(key);
     items.push(item);
   }
@@ -201,20 +168,20 @@ function parseSchedule(value: unknown): PublishedScheduleDay[] {
   );
 }
 
-function rowToPayload(row: PublishedTruckRow): PublishedPayload {
+function jsonToPayload(raw: Record<string, unknown>, truckId: string): PublishedPayload {
   return {
-    truckId: row.truck_id,
-    truckName: row.truck_name || '',
-    phone: row.phone || '',
-    orderUrl: row.order_url || '',
-    location: row.location || '',
-    hoursStart: row.hours_start || '',
-    hoursEnd: row.hours_end || '',
-    special: row.special || '',
-    menu: parseMenu(row.menu),
-    schedule: parseSchedule(row.schedule),
-    lastPublished: row.last_published || '',
-    version: row.version ?? 1,
+    truckId: (typeof raw.truckId === 'string' ? raw.truckId : truckId) || truckId,
+    truckName: typeof raw.truckName === 'string' ? raw.truckName : '',
+    phone: typeof raw.phone === 'string' ? raw.phone : '',
+    orderUrl: typeof raw.orderUrl === 'string' ? raw.orderUrl : '',
+    location: typeof raw.location === 'string' ? raw.location : '',
+    hoursStart: typeof raw.hoursStart === 'string' ? raw.hoursStart : '',
+    hoursEnd: typeof raw.hoursEnd === 'string' ? raw.hoursEnd : '',
+    special: typeof raw.special === 'string' ? raw.special : '',
+    menu: parseMenu(raw.menu),
+    schedule: parseSchedule(raw.schedule),
+    lastPublished: typeof raw.lastPublished === 'string' ? raw.lastPublished : '',
+    version: typeof raw.version === 'number' ? raw.version : 1,
   };
 }
 
@@ -229,7 +196,7 @@ export function hasPublishedData(data: PublishedPayload | null): boolean {
   );
 }
 
-// ── Fetch ────────────────────────────────────────────────────────────────────
+// ── Fetch from Storage ───────────────────────────────────────────────────────
 
 export async function fetchPublishedTruck(
   truckId = getTruckId(),
@@ -238,61 +205,38 @@ export async function fetchPublishedTruck(
 
   if (!isSupabaseConfigured()) {
     const msg = getSupabaseConfigHint();
-    console.error(POLL_LOG_PREFIX, 'not configured', msg);
-    return { ok: false, data: null, truckId: id, error: msg, rawRow: null };
+    console.error(LOG, 'not configured', msg);
+    return { ok: false, data: null, truckId: id, error: msg };
   }
 
-  const supabase = getSupabase();
-  if (!supabase) {
-    const msg = 'Could not create Supabase client';
-    console.error(POLL_LOG_PREFIX, msg);
-    return { ok: false, data: null, truckId: id, error: msg, rawRow: null };
-  }
-
-  console.info(POLL_LOG_PREFIX, 'fetching', { truckId: id, url: getSupabaseUrl() });
+  console.info(LOG, 'fetching menu-data bucket', { truckId: id });
 
   try {
-    const { data: row, error } = await supabase
-      .from('published_trucks')
-      .select(SELECT)
-      .eq('truck_id', id)
-      .maybeSingle();
-
-    if (error) {
-      console.error(POLL_LOG_PREFIX, 'query error', {
-        truckId: id,
-        message: error.message,
-        code: error.code,
-        details: error.details,
-      });
-      return { ok: false, data: null, truckId: id, error: error.message, rawRow: null };
+    const raw = await fetchMenuJsonFromStorage(id);
+    if (!raw) {
+      const msg = `No menu.json in menu-data bucket for truck_id="${id}"`;
+      console.warn(LOG, msg);
+      return { ok: false, data: null, truckId: id, error: msg };
     }
 
-    if (!row) {
-      const msg = `No row in published_trucks for truck_id="${id}"`;
-      console.warn(POLL_LOG_PREFIX, msg);
-      return { ok: false, data: null, truckId: id, error: msg, rawRow: null };
-    }
+    const payload = jsonToPayload(raw as Record<string, unknown>, id);
 
-    const payload = rowToPayload(row as PublishedTruckRow);
-
-    console.info(POLL_LOG_PREFIX, 'loaded', {
+    console.info(LOG, 'loaded', {
       truckId: id,
       menu: payload.menu.length,
       schedule: payload.schedule.length,
       lastPublished: payload.lastPublished,
-      items: payload.menu.map((m) => `${m.name} ($${m.price})`),
+      images: payload.menu.filter((m) => m.image).length,
     });
 
-    return { ok: true, data: payload, truckId: id, error: null, rawRow: row };
+    return { ok: true, data: payload, truckId: id, error: null };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown fetch error';
-    console.error(POLL_LOG_PREFIX, 'exception', err);
-    return { ok: false, data: null, truckId: id, error: msg, rawRow: null };
+    const msg = err instanceof Error ? err.message : 'Fetch failed';
+    console.error(LOG, 'exception', err);
+    return { ok: false, data: null, truckId: id, error: msg };
   }
 }
 
-/** @alias fetchPublishedTruck */
 export const getLatestPublished = fetchPublishedTruck;
 
 // ── Display helpers ──────────────────────────────────────────────────────────
@@ -354,7 +298,7 @@ export function formatPublishedTimestamp(iso: string): string {
   }
 }
 
-// Legacy aliases used by menuFromPublished
+// Legacy aliases
 export const normalizeMenuItemName = normalizeName;
 export const publishedMenuItemKey = menuItemKey;
 export const publishedItemToSiteId = menuItemSiteId;

@@ -6,7 +6,7 @@
  *   VITE_SUPABASE_ANON_KEY=eyJ... or sb_publishable_...
  *   VITE_TRUCK_ID=cluckin-chaos
  *
- * Reads public.published_trucks (anon SELECT via RLS).
+ * Reads public Storage buckets: menu-data (JSON), menu-images (photos).
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';

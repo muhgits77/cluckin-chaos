@@ -81,15 +81,15 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
           </h2>
           <div className="h-1.5 w-24 bg-gradient-to-r from-brand-yellow to-brand-red mx-auto rounded-full" />
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-            Menu, specials, and the weekly Lake Cumberland route — synced from Supabase when
-            Jesse hits Publish in TruckDash.
+            Menu, specials, and weekly route — loaded from Supabase Storage when Jesse hits
+            Publish in TruckDash.
           </p>
         </div>
 
         {status === 'loading' && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-400" role="status">
             <RefreshCw className="w-8 h-8 animate-spin text-brand-yellow" />
-            <p className="font-mono text-xs uppercase tracking-widest">Loading from Supabase…</p>
+            <p className="font-mono text-xs uppercase tracking-widest">Loading menu-data bucket…</p>
           </div>
         )}
 
@@ -205,9 +205,9 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
                 </div>
               )}
               <p className="text-center font-mono text-[10px] text-slate-600">
-                Supabase · truck={truckId} · menu={data.menu.length} · schedule=
+                menu-data/{truckId}/menu.json · items={data.menu.length} · schedule=
                 {data.schedule.length}
-                {lastFetchedAt && ` · fetched ${formatPublishedTimestamp(lastFetchedAt)}`}
+                {lastFetchedAt && ` · ${formatPublishedTimestamp(lastFetchedAt)}`}
               </p>
             </div>
 

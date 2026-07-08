@@ -64,6 +64,7 @@ export function publishedItemToMenuItem(item: PublishedMenuItem): MenuItem {
       catalog?.description ||
       `Fresh from the truck — ${name}.`,
     category,
+    // TruckDash uploads photos to menu-images bucket; URL is in JSON
     image: item.image?.trim() || catalog?.image || catalogImage(name, category),
     tags: item.tags?.length
       ? item.tags
