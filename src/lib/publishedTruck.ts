@@ -10,11 +10,19 @@ import {
   isSupabaseConfigured,
 } from './supabase';
 
-/** Menu line from TruckDash (price stored as string). */
+/**
+ * Menu line from TruckDash.
+ * Core fields: id, name, price (string). Optional extras if owner/app adds them later.
+ */
 export type PublishedMenuItem = {
   id: string;
   name: string;
   price: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  image?: string;
+  note?: string;
 };
 
 /** One day on the weekly route from TruckDash. */
@@ -95,12 +103,94 @@ export function getTruckId(): string {
   return fromEnv || 'cluckin-chaos';
 }
 
+function strField(obj: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+/** Normalize a raw JSON menu line from TruckDash / Supabase. */
+export function normalizePublishedMenuItem(
+  raw: unknown,
+  index = 0,
+): PublishedMenuItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const name = strField(obj, 'name', 'title', 'item');
+  if (!name) return null;
+
+  const priceRaw = obj.price ?? obj.cost ?? obj.amount ?? '';
+  const price =
+    typeof priceRaw === 'number'
+      ? String(priceRaw)
+      : typeof priceRaw === 'string'
+        ? priceRaw.trim()
+        : '';
+
+  const id =
+    strField(obj, 'id') ||
+    `pub-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+  const tagsRaw = obj.tags ?? obj.labels;
+  const tags = Array.isArray(tagsRaw)
+    ? tagsRaw.filter((t): t is string => typeof t === 'string' && !!t.trim())
+    : undefined;
+
+  return {
+    id,
+    name,
+    price,
+    description: strField(obj, 'description', 'desc', 'details', 'blurb'),
+    category: strField(obj, 'category', 'type', 'section'),
+    tags,
+    image: strField(obj, 'image', 'imageUrl', 'photo', 'img'),
+    note: strField(obj, 'note', 'notes'),
+  };
+}
+
 function asMenuArray(value: unknown): PublishedMenuItem[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (item): item is PublishedMenuItem =>
-      !!item && typeof item === 'object' && typeof (item as PublishedMenuItem).name === 'string',
-  );
+  return value
+    .map((item, i) => normalizePublishedMenuItem(item, i))
+    .filter((item): item is PublishedMenuItem => item !== null);
+}
+
+/** Parse price string ("10", "$10.00") to number for cart / display math. */
+export function parseMenuPriceNumber(price: string): number {
+  const num = Number(String(price || '').replace(/[^0-9.]/g, ''));
+  return Number.isFinite(num) ? num : 0;
+}
+
+/** Guess category from name when TruckDash doesn't send one. */
+export function inferMenuCategory(
+  name: string,
+  explicit?: string,
+): 'mains' | 'sides' | 'drinks' {
+  const cat = (explicit || '').toLowerCase();
+  if (cat.includes('drink') || cat.includes('bev') || cat.includes('tea') || cat.includes('soda')) {
+    return 'drinks';
+  }
+  if (cat.includes('side') || cat.includes('extra') || cat.includes('snack')) {
+    return 'sides';
+  }
+  if (cat.includes('main') || cat.includes('entree') || cat.includes('entrée')) {
+    return 'mains';
+  }
+
+  const n = name.toLowerCase();
+  if (
+    /\b(tea|lemonade|soda|coke|pepsi|water|drink|coffee|sweet tea|sprite|dr pepper)\b/.test(n)
+  ) {
+    return 'drinks';
+  }
+  if (
+    /\b(fries|slaw|chips|side|biscuit|cornbread|coleslaw|pickle|beans)\b/.test(n)
+  ) {
+    return 'sides';
+  }
+  return 'mains';
 }
 
 function asScheduleArray(value: unknown): PublishedScheduleDay[] {

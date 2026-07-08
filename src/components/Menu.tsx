@@ -1,19 +1,33 @@
-import React, { useState } from 'react';
-import { Flame, Plus, Search, Check, Sparkles, Filter } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Flame, Plus, Search, Check, Sparkles, Filter, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem } from '../types';
 import { MENU_ITEMS } from '../data';
+import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
+import { publishedMenuToMenuItems } from '../lib/menuFromPublished';
 
 interface MenuProps {
   onAddToCart: (item: MenuItem) => void;
+  /** When live data has a menu, prefer TruckDash published items. */
+  published?: UsePublishedTruckResult;
 }
 
-export default function Menu({ onAddToCart }: MenuProps) {
+export default function Menu({ onAddToCart, published }: MenuProps) {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'mains' | 'sides' | 'drinks'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [addedItemIds, setAddedItemIds] = useState<Record<string, boolean>>({});
   const [detailedItem, setDetailedItem] = useState<MenuItem | null>(null);
   const [isWrapSelected, setIsWrapSelected] = useState(false);
+
+  const liveMenuItems = useMemo(() => {
+    if (published?.hasLiveData && published.data?.menu?.length) {
+      return publishedMenuToMenuItems(published.data.menu);
+    }
+    return null;
+  }, [published?.hasLiveData, published?.data?.menu]);
+
+  const sourceItems = liveMenuItems ?? MENU_ITEMS;
+  const isLiveMenu = !!liveMenuItems;
 
   const categories = [
     { id: 'all', name: 'Full Menu' },
@@ -22,7 +36,7 @@ export default function Menu({ onAddToCart }: MenuProps) {
     { id: 'drinks', name: 'Southern Brews' },
   ] as const;
 
-  const filteredItems = MENU_ITEMS.filter((item) => {
+  const filteredItems = sourceItems.filter((item) => {
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -66,18 +80,36 @@ export default function Menu({ onAddToCart }: MenuProps) {
         {/* Section Heading */}
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
           <span className="text-brand-red font-mono text-xs uppercase tracking-widest font-extrabold flex items-center justify-center gap-1">
-            <Sparkles className="w-4.5 h-4.5" /> High-Voltage Comfort Food
+            {isLiveMenu ? (
+              <>
+                <Radio className="w-4.5 h-4.5 animate-pulse" /> Live from TruckDash
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4.5 h-4.5" /> High-Voltage Comfort Food
+              </>
+            )}
           </span>
           <h2 className="font-display font-extrabold text-3xl sm:text-4xl lg:text-5xl uppercase tracking-tight text-white">
-            The Interactive <span className="text-brand-red">Chaos Menu</span>
+            {isLiveMenu ? (
+              <>
+                Today&apos;s <span className="text-brand-red">Published Menu</span>
+              </>
+            ) : (
+              <>
+                The Interactive <span className="text-brand-red">Chaos Menu</span>
+              </>
+            )}
           </h2>
           <div className="h-1.5 w-24 bg-gradient-to-r from-brand-yellow to-brand-red mx-auto rounded-full"></div>
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-            Every item is prepared raw, double-dipped in seasoned milk-wash, hand-breaded in our 12-spice dry rub, and fried fresh on location. Warning: Highly addictive southern flavors.
+            {isLiveMenu
+              ? 'Pulled live from TruckDash via Supabase — same board the truck publishes for the road. Prices and items stay in sync when Jesse hits Publish.'
+              : 'Every item is prepared raw, double-dipped in seasoned milk-wash, hand-breaded in our 12-spice dry rub, and fried fresh on location. Warning: Highly addictive southern flavors.'}
           </p>
         </div>
 
-        {/* Filter Toolbar (Search + Tabs) */}
+        {/* Filter Toolbar (Search + Tabs) — operates on live TruckDash menu when connected */}
         <div id="menu-toolbar" className="flex flex-col md:flex-row gap-4 items-center justify-between mb-12 bg-slate-900 p-4 rounded-2xl border border-slate-800">
           {/* Category Tabs */}
           <div className="flex flex-wrap gap-2 w-full md:w-auto">

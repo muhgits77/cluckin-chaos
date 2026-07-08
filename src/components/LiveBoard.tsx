@@ -14,19 +14,21 @@ import {
   Flame,
   RefreshCw,
   AlertCircle,
-  UtensilsCrossed,
   Radio,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useMemo } from 'react';
 import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
+import { publishedMenuToMenuItems } from '../lib/menuFromPublished';
 import {
   formatHoursRange,
-  formatMenuPrice,
   formatPublishedTimestamp,
   getTodayWeekdayAbbr,
   weekdayAbbrToFull,
   type PublishedScheduleDay,
 } from '../lib/publishedTruck';
+import PublishedMenuGrid from './PublishedMenuGrid';
+import type { MenuItem } from '../types';
 
 function scheduleLocation(day: PublishedScheduleDay): string {
   const parts = [day.spot, day.neighborhood].filter(Boolean);
@@ -41,9 +43,10 @@ function scheduleHours(day: PublishedScheduleDay): string {
 
 type LiveBoardProps = {
   published: UsePublishedTruckResult;
+  onAddToCart?: (item: MenuItem) => void;
 };
 
-export default function LiveBoard({ published }: LiveBoardProps) {
+export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
   const {
     data,
     status,
@@ -56,6 +59,10 @@ export default function LiveBoard({ published }: LiveBoardProps) {
   } = published;
   const todayAbbr = getTodayWeekdayAbbr();
   const todayRow = data?.schedule?.find((d) => d.day.toUpperCase() === todayAbbr);
+  const liveMenuItems = useMemo(
+    () => (data?.menu?.length ? publishedMenuToMenuItems(data.menu) : []),
+    [data?.menu],
+  );
   const hoursToday =
     todayRow && !todayRow.closed
       ? formatHoursRange(todayRow.hoursStart, todayRow.hoursEnd)
@@ -244,103 +251,87 @@ export default function LiveBoard({ published }: LiveBoardProps) {
               </motion.div>
             </div>
 
-            {/* Full menu + weekly schedule */}
-            <div className="grid lg:grid-cols-12 gap-8 items-start">
-              {/* Menu */}
-              <div className="lg:col-span-7 space-y-4">
-                <h3 className="font-display font-black text-lg uppercase tracking-tight text-white flex items-center gap-2">
-                  <UtensilsCrossed className="w-5 h-5 text-brand-red" />
-                  Published Menu
-                </h3>
+            {/* Full published menu (from TruckDash menu array) */}
+            <div id="live-menu" className="space-y-4">
+              <PublishedMenuGrid
+                items={liveMenuItems}
+                onAddToCart={onAddToCart}
+                lastPublished={data.lastPublished}
+                truckName={data.truckName}
+                variant="board"
+              />
+              {liveMenuItems.length > 0 && (
+                <p className="text-center text-[11px] text-slate-500 font-mono">
+                  {liveMenuItems.length} item{liveMenuItems.length === 1 ? '' : 's'} pulled from
+                  Supabase ·{' '}
+                  <a href="#menu" className="text-brand-yellow hover:underline">
+                    Jump to interactive menu
+                  </a>
+                </p>
+              )}
+            </div>
 
-                {data.menu.length === 0 ? (
-                  <div className="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-400 text-sm">
-                    No menu items in this publish yet. The full site menu is still available
-                    below.
-                  </div>
-                ) : (
-                  <ul className="space-y-2">
-                    {data.menu.map((item) => (
-                      <li
-                        key={item.id || item.name}
-                        className="flex items-center justify-between gap-4 bg-slate-900 border border-slate-800 hover:border-brand-yellow/25 rounded-xl px-4 py-3.5 transition-colors"
+            {/* Weekly schedule */}
+            <div className="space-y-4">
+              <h3 className="font-display font-black text-lg uppercase tracking-tight text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-brand-red" />
+                Weekly Schedule
+              </h3>
+
+              {data.schedule.length === 0 ? (
+                <div className="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-400 text-sm">
+                  No weekly route published yet. See Find Us below for the usual stops.
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {data.schedule.map((day) => {
+                    const isToday = day.day.toUpperCase() === todayAbbr;
+                    return (
+                      <div
+                        key={day.id || day.day}
+                        className={`p-4 rounded-xl border flex flex-col gap-1.5 transition-all ${
+                          isToday
+                            ? 'bg-slate-900 border-brand-red shadow-md ring-1 ring-brand-red/25'
+                            : day.closed
+                              ? 'bg-slate-900/60 border-slate-800/80 opacity-70'
+                              : 'bg-slate-900 border-slate-800 hover:border-brand-yellow/30'
+                        }`}
                       >
-                        <span className="font-display font-bold text-white uppercase tracking-tight text-sm sm:text-base">
-                          {item.name}
-                        </span>
-                        <span className="font-mono font-black text-brand-yellow shrink-0 text-sm">
-                          {formatMenuPrice(item.price)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Weekly schedule */}
-              <div className="lg:col-span-5 space-y-4">
-                <h3 className="font-display font-black text-lg uppercase tracking-tight text-white flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-brand-red" />
-                  Weekly Schedule
-                </h3>
-
-                {data.schedule.length === 0 ? (
-                  <div className="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-400 text-sm">
-                    No weekly route published yet. See Find Us below for the usual stops.
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {data.schedule.map((day) => {
-                      const isToday = day.day.toUpperCase() === todayAbbr;
-                      return (
-                        <div
-                          key={day.id || day.day}
-                          className={`p-4 rounded-xl border flex flex-col gap-1.5 transition-all ${
-                            isToday
-                              ? 'bg-slate-900 border-brand-red shadow-md ring-1 ring-brand-red/25'
-                              : day.closed
-                                ? 'bg-slate-900/60 border-slate-800/80 opacity-70'
-                                : 'bg-slate-900 border-slate-800 hover:border-brand-yellow/30'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-display font-extrabold text-sm uppercase tracking-wide text-slate-200">
-                                {weekdayAbbrToFull(day.day)}
-                              </span>
-                              {isToday && (
-                                <span className="bg-green-900/30 text-green-400 text-[9px] font-mono uppercase font-black px-2 py-0.5 rounded-md flex items-center gap-1 border border-green-800/30 animate-pulse">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                                  Today
-                                </span>
-                              )}
-                              {day.closed && (
-                                <span className="bg-slate-950 text-slate-500 text-[9px] font-mono uppercase font-semibold px-2 py-0.5 rounded-md border border-slate-800">
-                                  Closed
-                                </span>
-                              )}
-                            </div>
-                            <span className="font-mono text-[11px] text-slate-400 font-semibold shrink-0">
-                              {scheduleHours(day)}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display font-extrabold text-sm uppercase tracking-wide text-slate-200">
+                              {weekdayAbbrToFull(day.day)}
                             </span>
+                            {isToday && (
+                              <span className="bg-green-900/30 text-green-400 text-[9px] font-mono uppercase font-black px-2 py-0.5 rounded-md flex items-center gap-1 border border-green-800/30 animate-pulse">
+                                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                Today
+                              </span>
+                            )}
+                            {day.closed && (
+                              <span className="bg-slate-950 text-slate-500 text-[9px] font-mono uppercase font-semibold px-2 py-0.5 rounded-md border border-slate-800">
+                                Closed
+                              </span>
+                            )}
                           </div>
-                          {!day.closed && (
-                            <div className="flex items-start gap-1.5 text-slate-300 text-xs">
-                              <MapPin className="w-3.5 h-3.5 text-brand-amber shrink-0 mt-0.5" />
-                              <span>{scheduleLocation(day)}</span>
-                            </div>
-                          )}
-                          {day.note && !day.closed && (
-                            <p className="text-[11px] text-slate-500 font-mono pl-5">
-                              {day.note}
-                            </p>
-                          )}
+                          <span className="font-mono text-[11px] text-slate-400 font-semibold shrink-0">
+                            {scheduleHours(day)}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                        {!day.closed && (
+                          <div className="flex items-start gap-1.5 text-slate-300 text-xs">
+                            <MapPin className="w-3.5 h-3.5 text-brand-amber shrink-0 mt-0.5" />
+                            <span>{scheduleLocation(day)}</span>
+                          </div>
+                        )}
+                        {day.note && !day.closed && (
+                          <p className="text-[11px] text-slate-500 font-mono pl-5">{day.note}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Last published + refresh */}

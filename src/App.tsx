@@ -97,11 +97,11 @@ export default function App() {
         {/* Hero Banner Section */}
         <Hero />
 
-        {/* Live TruckDash board: special, location, hours, menu, schedule */}
-        <LiveBoard published={published} />
+        {/* Live TruckDash board: special, location, hours, full menu, schedule */}
+        <LiveBoard published={published} onAddToCart={handleAddToCart} />
 
-        {/* Menu Grid section (static rich menu + cart) */}
-        <Menu onAddToCart={handleAddToCart} />
+        {/* Menu — prefers TruckDash published menu when live, else static catalog */}
+        <Menu onAddToCart={handleAddToCart} published={published} />
 
         {/* Narrative story section */}
         <About />
