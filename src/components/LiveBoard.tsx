@@ -17,11 +17,15 @@ import {
   Radio,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useEffect, useMemo } from 'react';
 import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
+import { publishedMenuToMenuItems } from '../lib/menuFromPublished';
 import {
   formatHoursRange,
+  formatMenuPrice,
   formatPublishedTimestamp,
   getTodayWeekdayAbbr,
+  getTruckId,
   weekdayAbbrToFull,
   type PublishedScheduleDay,
 } from '../lib/publishedTruck';
@@ -51,12 +55,73 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
     error,
     hasLiveData,
     hasLiveMenu,
-    menuItems: liveMenuItems,
+    menuItems: hookMenuItems,
     reload,
     truckId,
     configHint,
     lastFetchedAt,
+    rawRow,
   } = published;
+
+  // Bulletproof: prefer hook menuItems; if empty but data.menu has rows, map here
+  const liveMenuItems = useMemo(() => {
+    if (hookMenuItems.length > 0) return hookMenuItems;
+    if (data?.menu?.length) {
+      console.warn('[LiveBoard] hook menuItems empty but data.menu has items — remapping locally');
+      try {
+        return publishedMenuToMenuItems(data.menu);
+      } catch (e) {
+        console.error('[LiveBoard] local remap failed', e);
+        return data.menu.map((m, i) => ({
+          id: `lb-${m.id || i}`,
+          name: m.name,
+          price: Number(String(m.price).replace(/[^0-9.]/g, '')) || 0,
+          description: m.description || `Fresh from the truck — ${m.name}.`,
+          category: 'mains' as const,
+          image: '',
+          tags: ['Live from TruckDash'],
+        }));
+      }
+    }
+    return [];
+  }, [hookMenuItems, data?.menu]);
+
+  // ── TEMP DIAGNOSTIC LOGS (remove after verifying menu) ──
+  useEffect(() => {
+    const envTruckId = import.meta.env.VITE_TRUCK_ID;
+    console.group('%c[LiveBoard DIAGNOSTIC]', 'color:#f59e0b;font-weight:bold');
+    console.log('VITE_TRUCK_ID (import.meta.env):', envTruckId);
+    console.log('getTruckId():', getTruckId());
+    console.log('hook truckId:', truckId);
+    console.log('status:', status);
+    console.log('error:', error);
+    console.log('configHint:', configHint);
+    console.log('hasLiveData:', hasLiveData);
+    console.log('hasLiveMenu:', hasLiveMenu);
+    console.log('lastFetchedAt:', lastFetchedAt);
+    console.log('FULL published.data:', data);
+    console.log('data.menu (raw array):', data?.menu);
+    console.log('data.menu length:', data?.menu?.length ?? 0);
+    console.log('hookMenuItems length:', hookMenuItems.length);
+    console.log('liveMenuItems length:', liveMenuItems.length);
+    console.log('liveMenuItems:', liveMenuItems);
+    console.log('FULL raw Supabase row:', rawRow);
+    if (error) console.error('LiveBoard error state:', error);
+    console.groupEnd();
+  }, [
+    truckId,
+    status,
+    error,
+    configHint,
+    hasLiveData,
+    hasLiveMenu,
+    lastFetchedAt,
+    data,
+    hookMenuItems,
+    liveMenuItems,
+    rawRow,
+  ]);
+
   const todayAbbr = getTodayWeekdayAbbr();
   const todayRow = data?.schedule?.find((d) => d.day.toUpperCase() === todayAbbr);
   const hoursToday =
@@ -67,6 +132,9 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
     (todayRow && !todayRow.closed && scheduleLocation(todayRow)) ||
     data?.location ||
     '';
+
+  const showMenu =
+    hasLiveData && (liveMenuItems.length > 0 || (data?.menu?.length ?? 0) > 0);
 
   return (
     <section
@@ -249,7 +317,7 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
 
             {/* Full published menu (TruckDash `menu` array via Supabase) */}
             <div id="live-menu" className="space-y-4 scroll-mt-28">
-              {hasLiveMenu ? (
+              {showMenu && liveMenuItems.length > 0 ? (
                 <PublishedMenuGrid
                   items={liveMenuItems}
                   onAddToCart={onAddToCart}
@@ -257,6 +325,35 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
                   truckName={data.truckName}
                   variant="board"
                 />
+              ) : showMenu && data.menu.length > 0 ? (
+                /* Last-resort plain list if card mapper fails */
+                <div className="space-y-3">
+                  <h3 className="font-display font-black text-xl uppercase text-white tracking-tight">
+                    Published Menu
+                  </h3>
+                  <ul className="space-y-2">
+                    {data.menu.map((item) => (
+                      <li
+                        key={item.id || item.name}
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3.5"
+                      >
+                        <div>
+                          <span className="font-display font-bold text-white uppercase tracking-tight">
+                            {item.name}
+                          </span>
+                          {(item.description || item.note) && (
+                            <p className="text-slate-400 text-xs mt-0.5">
+                              {item.description || item.note}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-mono font-black text-brand-yellow shrink-0">
+                          {formatMenuPrice(item.price)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
                 <div className="bg-slate-900 border border-dashed border-amber-900/40 rounded-2xl p-6 text-center space-y-2">
                   <p className="font-display font-black text-white uppercase text-sm tracking-tight">
@@ -268,11 +365,12 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
                     <strong className="text-slate-200">Publish Updates to My Website</strong> again.
                   </p>
                   <p className="font-mono text-[10px] text-slate-600">
-                    truck_id={truckId} · menu lines={data.menu?.length ?? 0}
+                    truck_id={truckId} · data.menu={data.menu?.length ?? 0} · mapped=
+                    {liveMenuItems.length}
                   </p>
                 </div>
               )}
-              {hasLiveMenu && (
+              {liveMenuItems.length > 0 && (
                 <p className="text-center text-[11px] text-slate-500 font-mono">
                   {liveMenuItems.length} item{liveMenuItems.length === 1 ? '' : 's'} from Supabase ·{' '}
                   <a href="#menu" className="text-brand-yellow hover:underline">
@@ -280,6 +378,29 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
                   </a>
                 </p>
               )}
+
+              {/* TEMP on-screen diagnostic strip */}
+              <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 px-4 py-3 font-mono text-[10px] text-amber-200/90 space-y-1">
+                <p className="font-bold uppercase tracking-widest text-brand-yellow">
+                  Temporary Supabase diagnostic
+                </p>
+                <p>VITE_TRUCK_ID = {String(import.meta.env.VITE_TRUCK_ID ?? '(undefined)')}</p>
+                <p>resolved truckId = {truckId}</p>
+                <p>
+                  status={status} · hasLiveData={String(hasLiveData)} · hasLiveMenu=
+                  {String(hasLiveMenu)} · showMenu={String(showMenu)}
+                </p>
+                <p>
+                  data.menu.length={data.menu?.length ?? 0} · liveMenuItems=
+                  {liveMenuItems.length}
+                </p>
+                <p className="break-all">
+                  menu names:{' '}
+                  {(data.menu || []).map((m) => m.name).join(', ') || '(none)'}
+                </p>
+                {error && <p className="text-red-400">error: {error}</p>}
+                <p className="text-amber-200/50">See browser console: [LiveBoard DIAGNOSTIC]</p>
+              </div>
             </div>
 
             {/* Weekly schedule */}

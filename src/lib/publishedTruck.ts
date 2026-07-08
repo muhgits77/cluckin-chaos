@@ -78,6 +78,10 @@ export type FetchPublishedResult = {
   /** Raw PostgREST / network error message. */
   error?: string;
   truckId: string;
+  /** Raw Supabase row (for diagnostics). */
+  rawRow?: unknown;
+  /** Raw PostgREST error object. */
+  rawError?: unknown;
 };
 
 const DEFAULT_PUBLISHED: PublishedPayload = {
@@ -131,6 +135,13 @@ function coerceToArray(value: unknown): unknown[] {
     if (Array.isArray(obj.items)) return obj.items;
     if (Array.isArray(obj.menu)) return obj.menu;
     if (Array.isArray(obj.data)) return obj.data;
+    // Array-like object: { "0": {...}, "1": {...} }
+    const keys = Object.keys(obj);
+    if (keys.length > 0 && keys.every((k) => /^\d+$/.test(k))) {
+      return keys
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => obj[k]);
+    }
   }
   return [];
 }
@@ -359,6 +370,7 @@ export async function getLatestPublished(
   console.info('[publishedTruck] Fetching published_trucks', {
     truckId: id,
     url: getSupabaseUrl(),
+    select: SELECT_COLS,
   });
 
   // truck_id is UNIQUE — single row per truck. Prefer eq + maybeSingle (no order needed).
@@ -367,6 +379,24 @@ export async function getLatestPublished(
     .select(SELECT_COLS)
     .eq('truck_id', id)
     .maybeSingle();
+
+  // DIAGNOSTIC: always log the full raw response
+  console.log('[publishedTruck] RAW Supabase response', {
+    truckId: id,
+    error,
+    data,
+    menuField: data && (data as PublishedTruckRow).menu,
+    menuIsArray: data ? Array.isArray((data as PublishedTruckRow).menu) : false,
+    menuLength: data && Array.isArray((data as PublishedTruckRow).menu)
+      ? (data as PublishedTruckRow).menu!.length
+      : null,
+    payloadMenu: data
+      ? (data as PublishedTruckRow).payload &&
+        typeof (data as PublishedTruckRow).payload === 'object'
+        ? (data as PublishedTruckRow).payload
+        : null
+      : null,
+  });
 
   if (error) {
     // Fallback: list query (helps diagnose RLS / multiple-row edge cases)
@@ -377,6 +407,8 @@ export async function getLatestPublished(
       .eq('truck_id', id)
       .order('last_published', { ascending: false })
       .limit(1);
+
+    console.log('[publishedTruck] RAW list fallback', list);
 
     if (list.error) {
       console.error('[publishedTruck] Fetch error', {
@@ -391,6 +423,7 @@ export async function getLatestPublished(
         reason: 'error',
         error: list.error.message || error.message,
         truckId: id,
+        rawError: list.error,
       };
     }
 
@@ -402,12 +435,13 @@ export async function getLatestPublished(
         reason: 'empty',
         error: `No published_trucks row for truck_id="${id}". Publish from TruckDash with this id.`,
         truckId: id,
+        rawRow: list.data,
       };
     }
 
     const payload = rowToPayload(row);
     console.info('[publishedTruck] Loaded via list fallback', summarizePayload(payload, id));
-    return { data: payload, truckId: id };
+    return { data: payload, truckId: id, rawRow: row };
   }
 
   if (!data) {
@@ -423,8 +457,12 @@ export async function getLatestPublished(
   }
 
   const payload = rowToPayload(data as PublishedTruckRow);
-  console.info('[publishedTruck] Loaded', summarizePayload(payload, id));
-  return { data: payload, truckId: id };
+  console.info('[publishedTruck] Loaded + mapped', {
+    ...summarizePayload(payload, id),
+    menuNames: payload.menu.map((m) => m.name),
+    menuPrices: payload.menu.map((m) => m.price),
+  });
+  return { data: payload, truckId: id, rawRow: data };
 }
 
 function summarizePayload(payload: PublishedPayload, truckId: string) {
