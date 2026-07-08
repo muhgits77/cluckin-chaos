@@ -1,14 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Menu, X, ShoppingCart, Flame, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
+import {
+  formatHoursRange,
+  getTodayWeekdayAbbr,
+} from '../lib/publishedTruck';
 
 interface NavbarProps {
   cartCount: number;
   onCartToggle: () => void;
   activeSection: string;
+  published?: UsePublishedTruckResult;
 }
 
-export default function Navbar({ cartCount, onCartToggle, activeSection }: NavbarProps) {
+export default function Navbar({
+  cartCount,
+  onCartToggle,
+  activeSection,
+  published,
+}: NavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -20,7 +31,68 @@ export default function Navbar({ cartCount, onCartToggle, activeSection }: Navba
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const bannerText = useMemo(() => {
+    if (!published?.hasLiveData || !published.data) {
+      return (
+        <>
+          TRUCK UPDATE: We&apos;re live at{' '}
+          <span className="text-brand-yellow font-bold">Lake Cumberland State Resort Park</span>{' '}
+          today until 8 PM!
+        </>
+      );
+    }
+
+    const data = published.data;
+    const todayAbbr = getTodayWeekdayAbbr();
+    const todayRow = data.schedule?.find((d) => d.day.toUpperCase() === todayAbbr);
+    const location =
+      (todayRow &&
+        !todayRow.closed &&
+        [todayRow.spot, todayRow.neighborhood].filter(Boolean).join(' · ')) ||
+      data.location ||
+      'Lake Cumberland region';
+    const hours =
+      todayRow && !todayRow.closed
+        ? formatHoursRange(todayRow.hoursStart, todayRow.hoursEnd)
+        : formatHoursRange(data.hoursStart, data.hoursEnd);
+
+    if (todayRow?.closed) {
+      return (
+        <>
+          TRUCK UPDATE: Closed today
+          {todayRow.note ? ` — ${todayRow.note}` : ''}. Check the{' '}
+          <a href="#live-board" className="text-brand-yellow font-bold underline-offset-2 hover:underline">
+            live board
+          </a>{' '}
+          for this week&apos;s route.
+        </>
+      );
+    }
+
+    return (
+      <>
+        TRUCK UPDATE: We&apos;re live at{' '}
+        <span className="text-brand-yellow font-bold">{location}</span>
+        {hours ? (
+          <>
+            {' '}
+            today <span className="text-slate-200">{hours}</span>
+          </>
+        ) : (
+          ' today!'
+        )}
+        {data.special?.trim() ? (
+          <>
+            {' '}
+            · Special: <span className="text-brand-yellow font-bold">{data.special.trim()}</span>
+          </>
+        ) : null}
+      </>
+    );
+  }, [published?.hasLiveData, published?.data]);
+
   const navLinks = [
+    { name: 'Live Board', href: '#live-board' },
     { name: 'Menu', href: '#menu' },
     { name: 'Our Story', href: '#about' },
     { name: 'Gallery', href: '#gallery' },
@@ -41,9 +113,7 @@ export default function Navbar({ cartCount, onCartToggle, activeSection }: Navba
           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
         </span>
         <MapPin className="w-3.5 h-3.5 text-brand-yellow shrink-0" />
-        <span className="tracking-wide">
-          TRUCK UPDATE: We're live at <span className="text-brand-yellow font-bold">Lake Cumberland State Resort Park</span> today until 8 PM!
-        </span>
+        <span className="tracking-wide text-center">{bannerText}</span>
       </div>
 
       <header

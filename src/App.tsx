@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
+import LiveBoard from './components/LiveBoard';
 import Menu from './components/Menu';
 import Cart from './components/Cart';
 import About from './components/About';
@@ -9,16 +10,26 @@ import Testimonials from './components/Testimonials';
 import FindUs from './components/FindUs';
 import Footer from './components/Footer';
 import { CartItem, MenuItem } from './types';
+import { usePublishedTruck } from './hooks/usePublishedTruck';
 
 export default function App() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('menu');
+  const published = usePublishedTruck();
 
   // Track scroll position to update active navigation item
   useEffect(() => {
     const handleScroll = () => {
-      const sections = ['hero-section', 'menu', 'about', 'gallery', 'testimonials', 'find-us'];
+      const sections = [
+        'hero-section',
+        'live-board',
+        'menu',
+        'about',
+        'gallery',
+        'testimonials',
+        'find-us',
+      ];
       const scrollPosition = window.scrollY + 180; // offset for sticky header
 
       for (const sectionId of sections) {
@@ -79,13 +90,17 @@ export default function App() {
         cartCount={totalCartCount}
         onCartToggle={() => setIsCartOpen(true)}
         activeSection={activeSection}
+        published={published}
       />
 
       <main className="flex-grow">
         {/* Hero Banner Section */}
         <Hero />
 
-        {/* Menu Grid section */}
+        {/* Live TruckDash board: special, location, hours, menu, schedule */}
+        <LiveBoard published={published} />
+
+        {/* Menu Grid section (static rich menu + cart) */}
         <Menu onAddToCart={handleAddToCart} />
 
         {/* Narrative story section */}
@@ -97,8 +112,8 @@ export default function App() {
         {/* Customer Reviews/Feedback section */}
         <Testimonials />
 
-        {/* Find the truck, Route schedule, Coordinates registration cards */}
-        <FindUs />
+        {/* Find the truck — prefers live schedule when published */}
+        <FindUs published={published} />
       </main>
 
       {/* Slide-out Checkout / Cart Panel Drawer */}

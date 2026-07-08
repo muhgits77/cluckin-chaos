@@ -1,9 +1,29 @@
-import React, { useState } from 'react';
-import { MapPin, Clock, Calendar, Compass, Phone, Mail, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { MapPin, Clock, Calendar, Compass, Phone, Mail, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SCHEDULE } from '../data';
+import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
+import {
+  formatHoursRange,
+  formatPublishedTimestamp,
+  getTodayWeekdayAbbr,
+  weekdayAbbrToFull,
+} from '../lib/publishedTruck';
 
-export default function FindUs() {
+type FindUsProps = {
+  published?: UsePublishedTruckResult;
+};
+
+type DisplayScheduleRow = {
+  key: string;
+  day: string;
+  location: string;
+  hours: string;
+  isToday: boolean;
+  closed?: boolean;
+};
+
+export default function FindUs({ published }: FindUsProps) {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -20,6 +40,37 @@ export default function FindUs() {
     }, 1200);
   };
 
+  const todayAbbr = getTodayWeekdayAbbr();
+
+  const scheduleRows: DisplayScheduleRow[] = useMemo(() => {
+    if (published?.hasLiveData && published.data?.schedule?.length) {
+      return published.data.schedule.map((day) => ({
+        key: day.id || day.day,
+        day: weekdayAbbrToFull(day.day),
+        location: day.closed
+          ? day.note || 'Closed'
+          : [day.spot, day.neighborhood].filter(Boolean).join(' · ') || 'TBA',
+        hours: day.closed
+          ? 'Closed'
+          : formatHoursRange(day.hoursStart, day.hoursEnd) || 'Hours TBA',
+        isToday: day.day.toUpperCase() === todayAbbr,
+        closed: !!day.closed,
+      }));
+    }
+
+    // Static fallback from data.ts
+    return SCHEDULE.map((item) => ({
+      key: item.day,
+      day: item.day,
+      location: item.location,
+      hours: item.hours,
+      isToday: item.status === 'active',
+      closed: item.status === 'resting',
+    }));
+  }, [published?.hasLiveData, published?.data, todayAbbr]);
+
+  const usingLive = !!(published?.hasLiveData && published.data?.schedule?.length);
+
   return (
     <section id="find-us" className="py-20 bg-slate-950 relative border-b border-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -35,6 +86,11 @@ export default function FindUs() {
           <div className="h-1.5 w-24 bg-gradient-to-r from-brand-yellow to-brand-red mx-auto rounded-full"></div>
           <p className="text-slate-300 text-sm sm:text-base">
             Our combustion engine kitchen moves fast! Keep up with our weekly lunch & dinner locations surrounding Lake Cumberland.
+            {usingLive && published?.data?.lastPublished && (
+              <span className="block mt-2 text-xs font-mono text-slate-500 uppercase tracking-wider">
+                Live schedule · last published {formatPublishedTimestamp(published.data.lastPublished)}
+              </span>
+            )}
           </p>
         </div>
 
@@ -45,16 +101,23 @@ export default function FindUs() {
           <div className="lg:col-span-7 space-y-4">
             <h3 className="font-display font-black text-lg uppercase tracking-tight text-white mb-4 flex items-center gap-2">
               <Calendar className="w-5 h-5 text-brand-red" /> Current Route Schedule
+              {usingLive && (
+                <span className="ml-1 bg-green-900/30 text-green-400 text-[9px] font-mono uppercase font-black px-2 py-0.5 rounded-md border border-green-800/30">
+                  Live
+                </span>
+              )}
             </h3>
 
             <div className="space-y-3">
-              {SCHEDULE.map((item) => (
+              {scheduleRows.map((item) => (
                 <div
-                  key={item.day}
+                  key={item.key}
                   className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${
-                    item.status === 'active'
+                    item.isToday
                       ? 'bg-slate-900 border-brand-red shadow-md ring-1 ring-brand-red/20'
-                      : 'bg-slate-900 border-slate-800 shadow-sm hover:border-brand-yellow/30'
+                      : item.closed
+                        ? 'bg-slate-900/70 border-slate-800 opacity-75'
+                        : 'bg-slate-900 border-slate-800 shadow-sm hover:border-brand-yellow/30'
                   }`}
                 >
                   <div className="space-y-1.5">
@@ -63,10 +126,14 @@ export default function FindUs() {
                       <span className="font-display font-extrabold text-sm uppercase tracking-wide text-slate-200">
                         {item.day}
                       </span>
-                      {item.status === 'active' ? (
+                      {item.isToday ? (
                         <span className="bg-green-900/30 text-green-400 text-[9px] font-mono uppercase font-black px-2 py-0.5 rounded-md flex items-center gap-1 animate-pulse border border-green-800/30">
                           <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
-                          Live Now!
+                          {usingLive ? 'Today' : 'Live Now!'}
+                        </span>
+                      ) : item.closed ? (
+                        <span className="bg-slate-950 text-slate-500 text-[9px] font-mono uppercase font-semibold px-2 py-0.5 rounded-md border border-slate-850">
+                          Closed
                         </span>
                       ) : (
                         <span className="bg-slate-950 text-slate-400 text-[9px] font-mono uppercase font-semibold px-2 py-0.5 rounded-md border border-slate-850">
