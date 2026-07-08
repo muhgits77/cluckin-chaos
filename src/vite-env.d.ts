@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_TRUCK_ID?: string;
+  readonly VITE_MENU_JSON_URL?: string;
   readonly GEMINI_API_KEY?: string;
 }
 

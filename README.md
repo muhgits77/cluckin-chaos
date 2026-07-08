@@ -18,20 +18,24 @@ cp .env.example .env.local
 npm run dev
 ```
 
-### Environment variables
+### Live menu / schedule (simple JSON sync)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_SUPABASE_URL` | Yes (for live board) | **Same** Supabase project as TruckDash |
-| `VITE_SUPABASE_ANON_KEY` | Yes (for live board) | Anon or publishable public key (not `service_role`) |
-| `VITE_TRUCK_ID` | Yes | Must match TruckDash truck id (e.g. `cluckin-chaos`) |
+**Primary source:** `public/menu.json` (downloaded every time you hit **Publish** in TruckDash).
 
-**Local:** copy `.env.example` → `.env.local`, paste TruckDash project keys, **restart Vite** (`npm run dev`).  
-Without these vars the live board shows “not connected” and falls back to the static menu.
+1. In TruckDash, update menu / schedule / special → **Publish Updates to My Website**
+2. Browser downloads `menu.json`
+3. Copy it to this repo: `public/menu.json` (replace the file)
+4. Refresh Cluckin Chaos — Live Board + Menu update immediately
 
-**Verify:** open DevTools console — you should see `[publishedTruck] Loaded` with menu/schedule counts. The Live Board debug panel shows `status`, `truck_id`, and config when offline.
+Optional env:
 
-The live board **auto-refreshes** every ~45s and on tab focus after you publish from TruckDash.
+| Variable | Description |
+|----------|-------------|
+| `VITE_MENU_JSON_URL` | Override JSON path (default `/menu.json`) |
+| `VITE_TRUCK_ID` | Truck slug for labels (default `cluckin-chaos`) |
+| `VITE_SUPABASE_*` | Optional fallback if `menu.json` is missing |
+
+The live board polls about every 30s and on tab focus.
 
 ## Supabase / TruckDash
 

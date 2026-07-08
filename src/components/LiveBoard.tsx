@@ -61,6 +61,7 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
     configHint,
     lastFetchedAt,
     rawRow,
+    source,
   } = published;
 
   // Bulletproof: prefer hook menuItems; if empty but data.menu has rows, map here
@@ -93,6 +94,7 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
     console.log('VITE_TRUCK_ID (import.meta.env):', envTruckId);
     console.log('getTruckId():', getTruckId());
     console.log('hook truckId:', truckId);
+    console.log('source:', source);
     console.log('status:', status);
     console.log('error:', error);
     console.log('configHint:', configHint);
@@ -110,6 +112,7 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
     console.groupEnd();
   }, [
     truckId,
+    source,
     status,
     error,
     configHint,
@@ -379,27 +382,19 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
                 </p>
               )}
 
-              {/* TEMP on-screen diagnostic strip */}
-              <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 px-4 py-3 font-mono text-[10px] text-amber-200/90 space-y-1">
-                <p className="font-bold uppercase tracking-widest text-brand-yellow">
-                  Temporary Supabase diagnostic
-                </p>
-                <p>VITE_TRUCK_ID = {String(import.meta.env.VITE_TRUCK_ID ?? '(undefined)')}</p>
-                <p>resolved truckId = {truckId}</p>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3 font-mono text-[10px] text-slate-500 space-y-0.5">
                 <p>
-                  status={status} · hasLiveData={String(hasLiveData)} · hasLiveMenu=
-                  {String(hasLiveMenu)} · showMenu={String(showMenu)}
+                  Source:{' '}
+                  <span className="text-brand-yellow">
+                    {source === 'json' ? 'menu.json (fallback)' : 'Supabase'}
+                  </span>
+                  {' · '}
+                  {configHint}
                 </p>
                 <p>
-                  data.menu.length={data.menu?.length ?? 0} · liveMenuItems=
-                  {liveMenuItems.length}
+                  menu={data.menu?.length ?? 0} · schedule={data.schedule?.length ?? 0} · truck=
+                  {truckId}
                 </p>
-                <p className="break-all">
-                  menu names:{' '}
-                  {(data.menu || []).map((m) => m.name).join(', ') || '(none)'}
-                </p>
-                {error && <p className="text-red-400">error: {error}</p>}
-                <p className="text-amber-200/50">See browser console: [LiveBoard DIAGNOSTIC]</p>
               </div>
             </div>
 

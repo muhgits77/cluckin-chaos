@@ -1,8 +1,7 @@
 /**
  * Loads the latest TruckDash publish for this site's VITE_TRUCK_ID.
- * Auto-refreshes on focus + interval so TruckDash publishes show up live.
- *
- * Exposes pre-mapped `menuItems` so Live Board + Menu share one source of truth.
+ * Source of truth: Supabase published_trucks (polls + focus refresh).
+ * Fallback: public/menu.json when Supabase is unavailable (local dev).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -28,26 +27,18 @@ export type UsePublishedTruckResult = {
   status: PublishedTruckStatus;
   error: string | null;
   truckId: string;
-  /** True when we have usable publish content to display. */
   hasLiveData: boolean;
-  /** True when the publish includes at least one menu line. */
   hasLiveMenu: boolean;
-  /**
-   * Full menu mapped for UI (name, price, description, image).
-   * Empty array when offline / no menu — never null.
-   */
   menuItems: MenuItem[];
-  /** Human-readable config line for debug UI. */
   configHint: string;
   lastFetchedAt: string | null;
-  /** Raw Supabase row for LiveBoard diagnostics. */
   rawRow: unknown;
+  source: 'supabase' | 'json' | null;
   reload: () => void;
 };
 
-const POLL_MS = 45_000;
+const POLL_MS = 30_000;
 
-/** Ultra-safe fallback mapper — never throws, never depends on image imports. */
 function emergencyMapMenu(data: PublishedPayload): MenuItem[] {
   const list = Array.isArray(data.menu) ? data.menu : [];
   return list.map((m, i) => ({
@@ -72,6 +63,7 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
   const [tick, setTick] = useState(0);
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
   const [rawRow, setRawRow] = useState<unknown>(null);
+  const [source, setSource] = useState<'supabase' | 'json' | null>(null);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
@@ -87,19 +79,9 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
       console.log('[usePublishedTruck] load start', {
         truckId,
         VITE_TRUCK_ID: import.meta.env.VITE_TRUCK_ID,
-        configured: isSupabaseConfigured(),
+        supabaseConfigured: isSupabaseConfigured(),
         silent,
       });
-
-      if (!isSupabaseConfigured()) {
-        if (!mounted) return;
-        console.warn('[usePublishedTruck] unconfigured', getSupabaseConfigHint());
-        setData(null);
-        setRawRow(null);
-        setStatus('unconfigured');
-        setError(getSupabaseConfigHint());
-        return;
-      }
 
       try {
         const result = await getLatestPublished(truckId);
@@ -107,9 +89,11 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
 
         setLastFetchedAt(new Date().toISOString());
         setRawRow(result.rawRow ?? null);
+        setSource(result.source ?? null);
 
         console.log('[usePublishedTruck] getLatestPublished result', {
           truckId: result.truckId,
+          source: result.source,
           reason: result.reason,
           error: result.error,
           hasData: !!result.data,
@@ -120,14 +104,14 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
           rawError: result.rawError,
         });
 
-        if (result.reason === 'unconfigured') {
+        if (result.reason === 'unconfigured' && !result.data) {
           setData(null);
           setStatus('unconfigured');
           setError(result.error || getSupabaseConfigHint());
           return;
         }
 
-        if (result.reason === 'error') {
+        if (result.reason === 'error' && !result.data) {
           setData(null);
           setStatus('error');
           setError(result.error || 'Failed to load published data');
@@ -137,7 +121,10 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
         if (!result.data || !isUsablePublish(result.data)) {
           setData(result.data);
           setStatus('empty');
-          setError(result.error || `No publish found for truck_id="${truckId}"`);
+          setError(
+            result.error ||
+              `No publish found for truck_id="${truckId}". Publish from TruckDash.`,
+          );
           console.warn('[usePublishedTruck] empty', {
             truckId,
             error: result.error,
@@ -151,6 +138,7 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
         setError(null);
         console.info('[usePublishedTruck] READY', {
           truckId,
+          source: result.source,
           special: result.data.special,
           menuCount: result.data.menu.length,
           menuNames: result.data.menu.map((m) => `${m.name} ($${m.price})`),
@@ -162,6 +150,7 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
         console.error('[usePublishedTruck] exception', err);
         setData(null);
         setRawRow(null);
+        setSource(null);
         setError(err instanceof Error ? err.message : 'Failed to load published data');
         setStatus('error');
       }
@@ -175,7 +164,6 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
     };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
-
     const interval = window.setInterval(() => void load(true), POLL_MS);
 
     return () => {
@@ -190,12 +178,13 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
     if (!data) return [];
     const rawLen = Array.isArray(data.menu) ? data.menu.length : 0;
     if (rawLen === 0) {
-      console.warn('[usePublishedTruck] menuItems: data.menu empty', data);
+      console.warn('[usePublishedTruck] menuItems: data.menu empty', { truckId, data });
       return [];
     }
     try {
       const mapped = publishedMenuToMenuItems(data.menu);
       console.log('[usePublishedTruck] menuItems mapped', {
+        truckId,
         rawLen,
         mappedLen: mapped.length,
         names: mapped.map((m) => m.name),
@@ -209,12 +198,16 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
       console.error('[usePublishedTruck] menu map failed — emergency fallback', err, data.menu);
       return emergencyMapMenu(data);
     }
-  }, [data]);
+  }, [data, truckId]);
 
   const hasLiveData = status === 'ready' && isUsablePublish(data);
-  // Prefer raw menu length so UI still lights up even if mapper glitches
   const hasLiveMenu =
     hasLiveData && ((data?.menu?.length ?? 0) > 0 || menuItems.length > 0);
+
+  const configHint =
+    source === 'json'
+      ? `${getSupabaseConfigHint()} · data from public/menu.json`
+      : getSupabaseConfigHint();
 
   return {
     data,
@@ -224,9 +217,10 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
     hasLiveData,
     hasLiveMenu,
     menuItems,
-    configHint: getSupabaseConfigHint(),
+    configHint,
     lastFetchedAt,
     rawRow,
+    source,
     reload,
   };
 }
