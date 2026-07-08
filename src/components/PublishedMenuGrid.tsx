@@ -79,6 +79,7 @@ export default function PublishedMenuGrid({
         }
       >
         {items.map((item, index) => {
+          const listKey = `${item.id}|${item.price}|${item.name}`;
           const isDrink = item.category === 'drinks';
           const isSide = item.category === 'sides';
           const borderHover = isDrink
@@ -99,7 +100,7 @@ export default function PublishedMenuGrid({
 
           return (
             <motion.article
-              key={item.id}
+              key={listKey}
               initial={{ opacity: 0, y: 12 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}

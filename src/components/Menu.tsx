@@ -19,32 +19,9 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
   const [detailedItem, setDetailedItem] = useState<MenuItem | null>(null);
   const [isWrapSelected, setIsWrapSelected] = useState(false);
 
-  // Prefer pre-mapped menu from the publish hook (single source of truth with Live Board).
-  // Also accept raw data.menu length so we don't fall back to static while live data exists.
-  const isLiveMenu = !!(
-    published?.hasLiveData &&
-    ((published.menuItems?.length ?? 0) > 0 || (published.data?.menu?.length ?? 0) > 0)
-  );
-  const sourceItems: MenuItem[] =
-    isLiveMenu && (published!.menuItems?.length ?? 0) > 0
-      ? published!.menuItems
-      : isLiveMenu && published!.data?.menu?.length
-        ? published!.data.menu.map(
-            (m, i): MenuItem => ({
-              id: `published-${m.id || i}`,
-              name: m.name,
-              price: Number(String(m.price).replace(/[^0-9.]/g, '')) || 0,
-              description:
-                m.description ||
-                m.note ||
-                `Fresh from the truck — ${m.name}. Hand-prepped with Kentucky soul.`,
-              category: 'mains',
-              image: '',
-              tags: ['Live from TruckDash'],
-              chaosLevel: 1,
-            }),
-          )
-        : MENU_ITEMS;
+  // Single source of truth: hook menuItems (stable id/name keying from Supabase).
+  const isLiveMenu = !!(published?.hasLiveMenu && (published.menuItems?.length ?? 0) > 0);
+  const sourceItems: MenuItem[] = isLiveMenu ? published!.menuItems : MENU_ITEMS;
 
   const categories = [
     { id: 'all', name: 'Full Menu' },

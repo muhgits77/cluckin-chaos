@@ -11,8 +11,13 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '';
-const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '';
+const viteEnv =
+  typeof import.meta !== 'undefined' && import.meta.env
+    ? import.meta.env
+    : ({} as ImportMetaEnv);
+
+const rawUrl = (viteEnv.VITE_SUPABASE_URL as string | undefined) ?? '';
+const rawKey = (viteEnv.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '';
 
 const url = rawUrl.trim().replace(/\/+$/, '');
 const anonKey = rawKey.trim();

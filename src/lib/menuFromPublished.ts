@@ -1,6 +1,5 @@
 /**
- * Map TruckDash published menu → site MenuItem for Live Board + interactive Menu.
- * Enriches with local catalog images/descriptions when names match closely.
+ * Map Supabase published menu → site MenuItem for Live Board + Menu.
  */
 
 import { MENU_ITEMS } from '../data';
@@ -8,6 +7,8 @@ import type { MenuItem } from '../types';
 import {
   formatMenuPrice,
   inferMenuCategory,
+  menuItemSiteId,
+  normalizeName,
   parseMenuPriceNumber,
   type PublishedMenuItem,
 } from './publishedTruck';
@@ -22,116 +23,60 @@ import sodaImg from '../assets/images/soda_cans_1782487271435.jpg';
 import waterImg from '../assets/images/bottled_water_1782487258935.jpg';
 import truckImg from '../assets/images/chaos_food_truck_1782485499263.jpg';
 
-function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/['’]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
+export { menuItemSiteId as publishedItemToSiteId };
 
-/** Find a static catalog item whose name roughly matches the published line. */
-function findLocalMatch(name: string): MenuItem | undefined {
-  const n = normalizeName(name);
-  if (!n) return undefined;
-
-  // Exact / includes either way
-  const exact = MENU_ITEMS.find((item) => {
-    const local = normalizeName(item.name);
-    return local === n || local.includes(n) || n.includes(local);
-  });
-  if (exact) return exact;
-
-  // Token overlap (at least 2 meaningful tokens shared)
-  const tokens = n.split(' ').filter((t) => t.length > 2);
-  if (tokens.length === 0) return undefined;
-
-  let best: MenuItem | undefined;
-  let bestScore = 0;
-  for (const item of MENU_ITEMS) {
-    const localTokens = normalizeName(item.name).split(' ').filter((t) => t.length > 2);
-    const score = tokens.filter((t) => localTokens.includes(t)).length;
-    if (score > bestScore) {
-      bestScore = score;
-      best = item;
-    }
-  }
-  return bestScore >= 2 ? best : undefined;
-}
-
-/** Fallback image by inferred category / keywords when no local match. */
-function fallbackImage(name: string, category: MenuItem['category']): string {
+function catalogImage(name: string, category: MenuItem['category']): string {
   const n = name.toLowerCase();
-  if (/\b(tea|lemonade)\b/.test(n)) return lemonadeImg;
-  if (/\b(soda|coke|pepsi|sprite)\b/.test(n)) return sodaImg;
-  if (/\bwater\b/.test(n)) return waterImg;
-  if (/\b(fries|chips)\b/.test(n)) return friesImg;
-  if (/\b(nugget)\b/.test(n)) return nuggetsImg;
-  if (/\b(tender|strip)\b/.test(n)) return tendersImg;
-  if (/\b(sandwich|bbq|pulled|pork|brisket)\b/.test(n)) return bbqImg;
-  if (/\b(honey|hot|spicy)\b/.test(n)) return hotHoneyImg;
+  if (/tea|lemonade/.test(n)) return lemonadeImg;
+  if (/soda|coke|pepsi|sprite/.test(n)) return sodaImg;
+  if (/water/.test(n)) return waterImg;
+  if (/fries|chips/.test(n)) return friesImg;
+  if (/nugget/.test(n)) return nuggetsImg;
+  if (/tender|strip/.test(n)) return tendersImg;
+  if (/sandwich|bbq|pulled|pork/.test(n)) return bbqImg;
+  if (/honey|hot|spicy/.test(n)) return hotHoneyImg;
   if (category === 'drinks') return lemonadeImg;
   if (category === 'sides') return friesImg;
   return truckImg;
 }
 
-/**
- * Convert a TruckDash published menu line into a full site MenuItem
- * (prices as numbers, images, descriptions when available).
- */
-export function publishedItemToMenuItem(item: PublishedMenuItem, index = 0): MenuItem {
-  const name = (item.name || '').trim() || `Menu item ${index + 1}`;
-  const local = findLocalMatch(name);
-  // Prefer TruckDash category when set; never let a weak local name-match override a published main
+function catalogMatch(name: string): MenuItem | undefined {
+  const n = normalizeName(name);
+  return MENU_ITEMS.find((item) => normalizeName(item.name) === n);
+}
+
+export function publishedItemToMenuItem(item: PublishedMenuItem): MenuItem {
+  const name = item.name.trim();
+  const catalog = catalogMatch(name);
   const category = item.category
     ? inferMenuCategory(name, item.category)
-    : local?.category || inferMenuCategory(name, item.category);
-  const parsedPrice = parseMenuPriceNumber(item.price);
-  const price = parsedPrice > 0 ? parsedPrice : local?.price || 0;
+    : catalog?.category ?? inferMenuCategory(name);
 
-  const description =
-    item.description?.trim() ||
-    item.note?.trim() ||
-    local?.description ||
-    `Fresh from the truck — ${name}. Hand-prepped with Kentucky soul.`;
-
-  const tags =
-    item.tags && item.tags.length > 0
-      ? item.tags
-      : ['Live from TruckDash', category === 'mains' ? 'Fresh Fry' : category === 'drinks' ? 'Ice Cold' : 'Side Kick'];
-
-  // Always use a stable published id so cart keys don't collide with static catalog
-  const id = String(item.id || `published-${index}`).startsWith('published-')
-    ? String(item.id || `published-${index}`)
-    : `published-${item.id || index}`;
+  const price = parseMenuPriceNumber(item.price);
 
   return {
-    id,
+    id: menuItemSiteId(item),
     name,
     price,
-    description,
+    description:
+      item.description?.trim() ||
+      item.note?.trim() ||
+      catalog?.description ||
+      `Fresh from the truck — ${name}.`,
     category,
-    image: item.image || local?.image || fallbackImage(name, category),
-    tags,
-    chaosLevel: local?.chaosLevel ?? (category === 'mains' ? 2 : 0),
+    image: item.image?.trim() || catalog?.image || catalogImage(name, category),
+    tags: item.tags?.length
+      ? item.tags
+      : ['Live from TruckDash'],
+    chaosLevel: catalog?.chaosLevel ?? (category === 'mains' ? 2 : 0),
   };
 }
 
-export function publishedMenuToMenuItems(menu: PublishedMenuItem[] | null | undefined): MenuItem[] {
-  if (!menu || !Array.isArray(menu) || menu.length === 0) return [];
-  return menu
-    .map((item, i) => {
-      try {
-        return publishedItemToMenuItem(item, i);
-      } catch (err) {
-        console.warn('[menuFromPublished] skip item', item, err);
-        return null;
-      }
-    })
-    .filter((item): item is MenuItem => item !== null);
+export function publishedMenuToMenuItems(menu: PublishedMenuItem[]): MenuItem[] {
+  if (!menu.length) return [];
+  return menu.map(publishedItemToMenuItem);
 }
 
-/** Display helper: price label for a MenuItem. */
 export function menuItemPriceLabel(item: MenuItem): string {
-  return formatMenuPrice(String(item.price));
+  return formatMenuPrice(item.price);
 }
