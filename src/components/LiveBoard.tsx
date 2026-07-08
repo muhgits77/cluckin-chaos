@@ -17,9 +17,7 @@ import {
   Radio,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useMemo } from 'react';
 import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
-import { publishedMenuToMenuItems } from '../lib/menuFromPublished';
 import {
   formatHoursRange,
   formatPublishedTimestamp,
@@ -52,6 +50,8 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
     status,
     error,
     hasLiveData,
+    hasLiveMenu,
+    menuItems: liveMenuItems,
     reload,
     truckId,
     configHint,
@@ -59,10 +59,6 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
   } = published;
   const todayAbbr = getTodayWeekdayAbbr();
   const todayRow = data?.schedule?.find((d) => d.day.toUpperCase() === todayAbbr);
-  const liveMenuItems = useMemo(
-    () => (data?.menu?.length ? publishedMenuToMenuItems(data.menu) : []),
-    [data?.menu],
-  );
   const hoursToday =
     todayRow && !todayRow.closed
       ? formatHoursRange(todayRow.hoursStart, todayRow.hoursEnd)
@@ -251,21 +247,36 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
               </motion.div>
             </div>
 
-            {/* Full published menu (from TruckDash menu array) */}
-            <div id="live-menu" className="space-y-4">
-              <PublishedMenuGrid
-                items={liveMenuItems}
-                onAddToCart={onAddToCart}
-                lastPublished={data.lastPublished}
-                truckName={data.truckName}
-                variant="board"
-              />
-              {liveMenuItems.length > 0 && (
+            {/* Full published menu (TruckDash `menu` array via Supabase) */}
+            <div id="live-menu" className="space-y-4 scroll-mt-28">
+              {hasLiveMenu ? (
+                <PublishedMenuGrid
+                  items={liveMenuItems}
+                  onAddToCart={onAddToCart}
+                  lastPublished={data.lastPublished}
+                  truckName={data.truckName}
+                  variant="board"
+                />
+              ) : (
+                <div className="bg-slate-900 border border-dashed border-amber-900/40 rounded-2xl p-6 text-center space-y-2">
+                  <p className="font-display font-black text-white uppercase text-sm tracking-tight">
+                    Menu not in this publish yet
+                  </p>
+                  <p className="text-slate-400 text-xs leading-relaxed max-w-md mx-auto">
+                    Schedule is live, but the <code className="text-brand-yellow">menu</code> array
+                    is empty. In TruckDash, add menu items and hit{' '}
+                    <strong className="text-slate-200">Publish Updates to My Website</strong> again.
+                  </p>
+                  <p className="font-mono text-[10px] text-slate-600">
+                    truck_id={truckId} · menu lines={data.menu?.length ?? 0}
+                  </p>
+                </div>
+              )}
+              {hasLiveMenu && (
                 <p className="text-center text-[11px] text-slate-500 font-mono">
-                  {liveMenuItems.length} item{liveMenuItems.length === 1 ? '' : 's'} pulled from
-                  Supabase ·{' '}
+                  {liveMenuItems.length} item{liveMenuItems.length === 1 ? '' : 's'} from Supabase ·{' '}
                   <a href="#menu" className="text-brand-yellow hover:underline">
-                    Jump to interactive menu
+                    Jump to full menu section
                   </a>
                 </p>
               )}

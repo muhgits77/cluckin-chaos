@@ -111,26 +111,65 @@ function strField(obj: Record<string, unknown>, ...keys: string[]): string | und
   return undefined;
 }
 
+/** Coerce unknown values that may be JSON strings / wrappers into an array. */
+function coerceToArray(value: unknown): unknown[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      return coerceToArray(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    // TruckDash / future shapes: { items: [...] } or { menu: [...] }
+    if (Array.isArray(obj.items)) return obj.items;
+    if (Array.isArray(obj.menu)) return obj.menu;
+    if (Array.isArray(obj.data)) return obj.data;
+  }
+  return [];
+}
+
+function coerceString(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
 /** Normalize a raw JSON menu line from TruckDash / Supabase. */
 export function normalizePublishedMenuItem(
   raw: unknown,
   index = 0,
 ): PublishedMenuItem | null {
+  // Plain string line: "Pulled Pork Sandwich"
+  if (typeof raw === 'string' && raw.trim()) {
+    const name = raw.trim();
+    return {
+      id: `pub-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name,
+      price: '',
+    };
+  }
+
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
-  const name = strField(obj, 'name', 'title', 'item');
+
+  const name =
+    strField(obj, 'name', 'title', 'item', 'item_name', 'itemName', 'label') ||
+    coerceString(obj.name);
   if (!name) return null;
 
-  const priceRaw = obj.price ?? obj.cost ?? obj.amount ?? '';
-  const price =
-    typeof priceRaw === 'number'
-      ? String(priceRaw)
-      : typeof priceRaw === 'string'
-        ? priceRaw.trim()
-        : '';
+  const priceRaw = obj.price ?? obj.cost ?? obj.amount ?? obj.Price ?? '';
+  const price = coerceString(priceRaw) ?? '';
 
   const id =
     strField(obj, 'id') ||
+    coerceString(obj.id) ||
     `pub-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   const tagsRaw = obj.tags ?? obj.labels;
@@ -142,19 +181,35 @@ export function normalizePublishedMenuItem(
     id,
     name,
     price,
-    description: strField(obj, 'description', 'desc', 'details', 'blurb'),
+    description: strField(obj, 'description', 'desc', 'details', 'blurb', 'about'),
     category: strField(obj, 'category', 'type', 'section'),
     tags,
-    image: strField(obj, 'image', 'imageUrl', 'photo', 'img'),
+    image: strField(obj, 'image', 'imageUrl', 'photo', 'img', 'image_url'),
     note: strField(obj, 'note', 'notes'),
   };
 }
 
-function asMenuArray(value: unknown): PublishedMenuItem[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item, i) => normalizePublishedMenuItem(item, i))
-    .filter((item): item is PublishedMenuItem => item !== null);
+/**
+ * Parse published menu from column or payload (handles arrays, JSON strings, wrappers).
+ */
+export function asMenuArray(value: unknown): PublishedMenuItem[] {
+  const list = coerceToArray(value);
+  const out: PublishedMenuItem[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const item = normalizePublishedMenuItem(list[i], i);
+    if (item) out.push(item);
+  }
+  return out;
+}
+
+/** Prefer the richest non-empty menu source (column vs payload). */
+export function pickBestMenu(...sources: unknown[]): PublishedMenuItem[] {
+  let best: PublishedMenuItem[] = [];
+  for (const source of sources) {
+    const parsed = asMenuArray(source);
+    if (parsed.length > best.length) best = parsed;
+  }
+  return best;
 }
 
 /** Parse price string ("10", "$10.00") to number for cart / display math. */
@@ -194,8 +249,8 @@ export function inferMenuCategory(
 }
 
 function asScheduleArray(value: unknown): PublishedScheduleDay[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
+  const list = coerceToArray(value);
+  return list.filter(
     (item): item is PublishedScheduleDay =>
       !!item && typeof item === 'object' && typeof (item as PublishedScheduleDay).day === 'string',
   );
@@ -205,40 +260,54 @@ function rowToPayload(row: PublishedTruckRow): PublishedPayload {
   const payloadObj =
     row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : {};
 
-  const fromPayload: Partial<PublishedPayload> = {
-    truckName: typeof payloadObj.truckName === 'string' ? payloadObj.truckName : undefined,
-    phone: typeof payloadObj.phone === 'string' ? payloadObj.phone : undefined,
-    orderUrl: typeof payloadObj.orderUrl === 'string' ? payloadObj.orderUrl : undefined,
-    location: typeof payloadObj.location === 'string' ? payloadObj.location : undefined,
-    hoursStart: typeof payloadObj.hoursStart === 'string' ? payloadObj.hoursStart : undefined,
-    hoursEnd: typeof payloadObj.hoursEnd === 'string' ? payloadObj.hoursEnd : undefined,
-    special: typeof payloadObj.special === 'string' ? payloadObj.special : undefined,
-    menu: asMenuArray(payloadObj.menu),
-    schedule: asScheduleArray(payloadObj.schedule),
-    lastPublished:
-      typeof payloadObj.lastPublished === 'string' ? payloadObj.lastPublished : undefined,
-    version: typeof payloadObj.version === 'number' ? payloadObj.version : undefined,
-  };
+  // Merge menu from BOTH the menu column and payload.menu (whichever is richer).
+  // This fixes cases where one side is empty / stringified / nested.
+  const menu = pickBestMenu(row.menu, payloadObj.menu, payloadObj.items);
 
-  const menu = asMenuArray(row.menu).length ? asMenuArray(row.menu) : fromPayload.menu || [];
-  const schedule = asScheduleArray(row.schedule).length
-    ? asScheduleArray(row.schedule)
-    : fromPayload.schedule || [];
+  const scheduleFromRow = asScheduleArray(row.schedule);
+  const scheduleFromPayload = asScheduleArray(payloadObj.schedule);
+  const schedule =
+    scheduleFromRow.length >= scheduleFromPayload.length ? scheduleFromRow : scheduleFromPayload;
 
-  return {
+  const lastPublished =
+    row.last_published ||
+    (typeof payloadObj.lastPublished === 'string' ? payloadObj.lastPublished : '') ||
+    '';
+
+  const payload: PublishedPayload = {
     ...DEFAULT_PUBLISHED,
-    truckName: row.truck_name || fromPayload.truckName || '',
-    phone: row.phone || fromPayload.phone || '',
-    orderUrl: row.order_url || fromPayload.orderUrl || '',
-    location: row.location || fromPayload.location || '',
-    hoursStart: row.hours_start || fromPayload.hoursStart || '',
-    hoursEnd: row.hours_end || fromPayload.hoursEnd || '',
-    special: row.special || fromPayload.special || '',
+    truckName:
+      row.truck_name ||
+      (typeof payloadObj.truckName === 'string' ? payloadObj.truckName : '') ||
+      '',
+    phone: row.phone || (typeof payloadObj.phone === 'string' ? payloadObj.phone : '') || '',
+    orderUrl:
+      row.order_url || (typeof payloadObj.orderUrl === 'string' ? payloadObj.orderUrl : '') || '',
+    location:
+      row.location || (typeof payloadObj.location === 'string' ? payloadObj.location : '') || '',
+    hoursStart:
+      row.hours_start ||
+      (typeof payloadObj.hoursStart === 'string' ? payloadObj.hoursStart : '') ||
+      '',
+    hoursEnd:
+      row.hours_end || (typeof payloadObj.hoursEnd === 'string' ? payloadObj.hoursEnd : '') || '',
+    special: row.special || (typeof payloadObj.special === 'string' ? payloadObj.special : '') || '',
     menu,
     schedule,
-    lastPublished: row.last_published || fromPayload.lastPublished || '',
-    version: row.version ?? fromPayload.version ?? 1,
+    lastPublished,
+    version: row.version ?? (typeof payloadObj.version === 'number' ? payloadObj.version : 1),
   };
+
+  if (import.meta.env.DEV) {
+    console.info('[publishedTruck] rowToPayload menu', {
+      columnMenu: Array.isArray(row.menu) ? row.menu.length : typeof row.menu,
+      payloadMenu: Array.isArray(payloadObj.menu) ? (payloadObj.menu as unknown[]).length : typeof payloadObj.menu,
+      resolvedMenu: menu.length,
+      sample: menu.slice(0, 2).map((m) => m.name),
+    });
+  }
+
+  return payload;
 }
 
 /**

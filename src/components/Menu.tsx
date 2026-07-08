@@ -1,14 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Flame, Plus, Search, Check, Sparkles, Filter, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem } from '../types';
 import { MENU_ITEMS } from '../data';
 import type { UsePublishedTruckResult } from '../hooks/usePublishedTruck';
-import { publishedMenuToMenuItems } from '../lib/menuFromPublished';
+import PublishedMenuGrid from './PublishedMenuGrid';
 
 interface MenuProps {
   onAddToCart: (item: MenuItem) => void;
-  /** When live data has a menu, prefer TruckDash published items. */
+  /** TruckDash / Supabase publish — when menuItems present, that is the source of truth. */
   published?: UsePublishedTruckResult;
 }
 
@@ -19,15 +19,9 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
   const [detailedItem, setDetailedItem] = useState<MenuItem | null>(null);
   const [isWrapSelected, setIsWrapSelected] = useState(false);
 
-  const liveMenuItems = useMemo(() => {
-    if (published?.hasLiveData && published.data?.menu?.length) {
-      return publishedMenuToMenuItems(published.data.menu);
-    }
-    return null;
-  }, [published?.hasLiveData, published?.data?.menu]);
-
-  const sourceItems = liveMenuItems ?? MENU_ITEMS;
-  const isLiveMenu = !!liveMenuItems;
+  // Prefer pre-mapped menu from the publish hook (single source of truth with Live Board)
+  const isLiveMenu = !!(published?.hasLiveMenu && published.menuItems.length > 0);
+  const sourceItems = isLiveMenu ? published!.menuItems : MENU_ITEMS;
 
   const categories = [
     { id: 'all', name: 'Full Menu' },
@@ -38,8 +32,11 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
 
   const filteredItems = sourceItems.filter((item) => {
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          item.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      item.name.toLowerCase().includes(q) ||
+      (item.description || '').toLowerCase().includes(q);
     return matchesCategory && matchesSearch;
   });
 
@@ -109,7 +106,7 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
           </p>
         </div>
 
-        {/* Filter Toolbar (Search + Tabs) — operates on live TruckDash menu when connected */}
+        {/* Filter Toolbar (Search + Tabs) */}
         <div id="menu-toolbar" className="flex flex-col md:flex-row gap-4 items-center justify-between mb-12 bg-slate-900 p-4 rounded-2xl border border-slate-800">
           {/* Category Tabs */}
           <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -135,7 +132,7 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
             </span>
             <input
               type="text"
-              placeholder="Search tenders, tea, fries..."
+              placeholder={isLiveMenu ? 'Search published menu…' : 'Search tenders, tea, fries...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 pl-9 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:bg-slate-950 transition-all text-white font-sans placeholder-slate-500"
@@ -143,8 +140,39 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
           </div>
         </div>
 
-        {/* Menu Grid */}
-        <div id="menu-items-grid" className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Live published menu — primary when Supabase has TruckDash menu[] */}
+        {isLiveMenu && (
+          <div id="menu-items-grid" className="mb-4">
+            <PublishedMenuGrid
+              items={filteredItems}
+              onAddToCart={onAddToCart}
+              lastPublished={published?.data?.lastPublished}
+              truckName={published?.data?.truckName}
+              variant="menu"
+            />
+            {filteredItems.length === 0 && (
+              <div className="col-span-full text-center py-12 bg-slate-900 rounded-2xl border border-dashed border-slate-800 space-y-3 mt-4">
+                <Filter className="w-10 h-10 mx-auto text-slate-600" />
+                <h4 className="font-display font-black text-white uppercase text-lg">No Items Match Filter</h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory('all');
+                    setSearchQuery('');
+                  }}
+                  className="text-xs bg-brand-red text-white py-2 px-4 rounded-xl uppercase font-black tracking-widest font-display"
+                >
+                  Show All Published Items
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Static catalog grid — only when TruckDash menu is not live */}
+        <div
+          className={`grid sm:grid-cols-2 lg:grid-cols-3 gap-8 ${isLiveMenu ? 'hidden' : ''}`}
+        >
           <AnimatePresence mode="popLayout">
             {filteredItems.map((item) => (
               <motion.div

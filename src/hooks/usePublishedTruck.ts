@@ -1,9 +1,12 @@
 /**
  * Loads the latest TruckDash publish for this site's VITE_TRUCK_ID.
  * Auto-refreshes on focus + interval so TruckDash publishes show up live.
+ *
+ * Exposes pre-mapped `menuItems` so Live Board + Menu share one source of truth.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { publishedMenuToMenuItems } from '../lib/menuFromPublished';
 import {
   getLatestPublished,
   getTruckId,
@@ -11,6 +14,7 @@ import {
   type PublishedPayload,
 } from '../lib/publishedTruck';
 import { getSupabaseConfigHint, isSupabaseConfigured } from '../lib/supabase';
+import type { MenuItem } from '../types';
 
 export type PublishedTruckStatus =
   | 'loading'
@@ -26,6 +30,13 @@ export type UsePublishedTruckResult = {
   truckId: string;
   /** True when we have usable publish content to display. */
   hasLiveData: boolean;
+  /** True when the publish includes at least one menu line. */
+  hasLiveMenu: boolean;
+  /**
+   * Full menu mapped for UI (name, price, description, image).
+   * Empty array when offline / no menu — never null.
+   */
+  menuItems: MenuItem[];
   /** Human-readable config line for debug UI. */
   configHint: string;
   lastFetchedAt: string | null;
@@ -96,15 +107,14 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
         setData(result.data);
         setStatus('ready');
         setError(null);
-        if (import.meta.env.DEV) {
-          console.info('[usePublishedTruck] ready', {
-            truckId,
-            special: result.data.special,
-            menu: result.data.menu.length,
-            schedule: result.data.schedule.length,
-            lastPublished: result.data.lastPublished,
-          });
-        }
+        console.info('[usePublishedTruck] ready', {
+          truckId,
+          special: result.data.special,
+          menuCount: result.data.menu.length,
+          menuNames: result.data.menu.map((m) => m.name),
+          scheduleCount: result.data.schedule.length,
+          lastPublished: result.data.lastPublished,
+        });
       } catch (err) {
         if (!mounted) return;
         console.error('[usePublishedTruck] exception', err);
@@ -116,7 +126,6 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
 
     void load(false);
 
-    // Refresh when user returns to the tab (after publishing from TruckDash)
     const onFocus = () => void load(true);
     const onVisible = () => {
       if (document.visibilityState === 'visible') void load(true);
@@ -134,12 +143,35 @@ export function usePublishedTruck(truckIdOverride?: string): UsePublishedTruckRe
     };
   }, [truckId, tick]);
 
+  const menuItems = useMemo(() => {
+    if (!data?.menu?.length) return [];
+    try {
+      return publishedMenuToMenuItems(data.menu);
+    } catch (err) {
+      console.error('[usePublishedTruck] menu map failed', err, data.menu);
+      // Minimal fallback so UI still shows names/prices
+      return data.menu.map((m, i) => ({
+        id: m.id || `fallback-${i}`,
+        name: m.name,
+        price: Number(String(m.price).replace(/[^0-9.]/g, '')) || 0,
+        description: m.description || m.note || `Fresh from the truck — ${m.name}.`,
+        category: 'mains' as const,
+        image: '',
+        tags: ['Live from TruckDash'],
+      }));
+    }
+  }, [data]);
+
+  const hasLiveData = status === 'ready' && isUsablePublish(data);
+
   return {
     data,
     status,
     error,
     truckId,
-    hasLiveData: status === 'ready' && isUsablePublish(data),
+    hasLiveData,
+    hasLiveMenu: hasLiveData && menuItems.length > 0,
+    menuItems,
     configHint: getSupabaseConfigHint(),
     lastFetchedAt,
     reload,

@@ -80,35 +80,55 @@ function fallbackImage(name: string, category: MenuItem['category']): string {
  * (prices as numbers, images, descriptions when available).
  */
 export function publishedItemToMenuItem(item: PublishedMenuItem, index = 0): MenuItem {
-  const local = findLocalMatch(item.name);
-  const category = inferMenuCategory(item.name, item.category);
-  const price = parseMenuPriceNumber(item.price) || local?.price || 0;
+  const name = (item.name || '').trim() || `Menu item ${index + 1}`;
+  const local = findLocalMatch(name);
+  // Prefer TruckDash category when set; never let a weak local name-match override a published main
+  const category = item.category
+    ? inferMenuCategory(name, item.category)
+    : local?.category || inferMenuCategory(name, item.category);
+  const parsedPrice = parseMenuPriceNumber(item.price);
+  const price = parsedPrice > 0 ? parsedPrice : local?.price || 0;
 
   const description =
     item.description?.trim() ||
     item.note?.trim() ||
     local?.description ||
-    `Fresh from the truck — ${item.name}. Hand-prepped with Kentucky soul.`;
+    `Fresh from the truck — ${name}. Hand-prepped with Kentucky soul.`;
 
   const tags =
     item.tags && item.tags.length > 0
       ? item.tags
-      : local?.tags || ['Live from TruckDash', category === 'mains' ? 'Fresh Fry' : category === 'drinks' ? 'Ice Cold' : 'Side Kick'];
+      : ['Live from TruckDash', category === 'mains' ? 'Fresh Fry' : category === 'drinks' ? 'Ice Cold' : 'Side Kick'];
+
+  // Always use a stable published id so cart keys don't collide with static catalog
+  const id = String(item.id || `published-${index}`).startsWith('published-')
+    ? String(item.id || `published-${index}`)
+    : `published-${item.id || index}`;
 
   return {
-    id: item.id || `published-${index}`,
-    name: item.name,
+    id,
+    name,
     price,
     description,
-    category: local?.category || category,
-    image: item.image || local?.image || fallbackImage(item.name, category),
+    category,
+    image: item.image || local?.image || fallbackImage(name, category),
     tags,
     chaosLevel: local?.chaosLevel ?? (category === 'mains' ? 2 : 0),
   };
 }
 
-export function publishedMenuToMenuItems(menu: PublishedMenuItem[]): MenuItem[] {
-  return menu.map((item, i) => publishedItemToMenuItem(item, i));
+export function publishedMenuToMenuItems(menu: PublishedMenuItem[] | null | undefined): MenuItem[] {
+  if (!menu || !Array.isArray(menu) || menu.length === 0) return [];
+  return menu
+    .map((item, i) => {
+      try {
+        return publishedItemToMenuItem(item, i);
+      } catch (err) {
+        console.warn('[menuFromPublished] skip item', item, err);
+        return null;
+      }
+    })
+    .filter((item): item is MenuItem => item !== null);
 }
 
 /** Display helper: price label for a MenuItem. */

@@ -108,12 +108,18 @@ export default function PublishedMenuGrid({
             >
               {/* Image */}
               <div className="aspect-[16/10] w-full overflow-hidden relative bg-slate-950">
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
+                {item.image ? (
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-red-950/40 to-slate-950">
+                    <Flame className="w-12 h-12 text-brand-yellow/40 fill-brand-yellow/20" />
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none" />
 
                 <div
