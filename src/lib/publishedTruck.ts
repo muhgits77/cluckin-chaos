@@ -2,10 +2,11 @@
  * Cluckin Chaos live data — fetched from Supabase Storage menu-data bucket.
  * Path: menu-data/{truckId}/menu.json
  * Images: public URLs in menu-images bucket (set by TruckDash on publish).
+ * Fallback: published_trucks table (if menu.json not yet uploaded).
  */
 
 import { fetchMenuJsonFromStorage } from './fetchMenuJson';
-import { getSupabaseConfigHint, isSupabaseConfigured } from './supabase';
+import { getSupabase, getSupabaseConfigHint, isSupabaseConfigured } from './supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,7 +197,52 @@ export function hasPublishedData(data: PublishedPayload | null): boolean {
   );
 }
 
-// ── Fetch from Storage ───────────────────────────────────────────────────────
+// ── Fetch from Storage (+ table fallback) ────────────────────────────────────
+
+async function fetchFromPublishedTrucksTable(
+  truckId: string,
+): Promise<PublishedPayload | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('published_trucks')
+    .select('*')
+    .eq('truck_id', truckId)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.warn(LOG, 'published_trucks fallback failed', error.message);
+    return null;
+  }
+
+  const row = data as Record<string, unknown>;
+  const payloadJson =
+    row.payload && typeof row.payload === 'object'
+      ? (row.payload as Record<string, unknown>)
+      : {};
+
+  // Prefer column fields; fill gaps from payload JSON
+  const merged: Record<string, unknown> = {
+    truckId,
+    truckName: row.truck_name ?? payloadJson.truckName ?? '',
+    phone: row.phone ?? payloadJson.phone ?? '',
+    orderUrl: row.order_url ?? payloadJson.orderUrl ?? '',
+    location: row.location ?? payloadJson.location ?? '',
+    hoursStart: row.hours_start ?? payloadJson.hoursStart ?? '',
+    hoursEnd: row.hours_end ?? payloadJson.hoursEnd ?? '',
+    special: row.special ?? payloadJson.special ?? '',
+    menu: row.menu ?? payloadJson.menu ?? [],
+    schedule: row.schedule ?? payloadJson.schedule ?? [],
+    lastPublished:
+      (typeof row.last_published === 'string' && row.last_published) ||
+      (typeof payloadJson.lastPublished === 'string' && payloadJson.lastPublished) ||
+      '',
+    version: typeof row.version === 'number' ? row.version : 1,
+  };
+
+  return jsonToPayload(merged, truckId);
+}
 
 export async function fetchPublishedTruck(
   truckId = getTruckId(),
@@ -213,23 +259,35 @@ export async function fetchPublishedTruck(
 
   try {
     const raw = await fetchMenuJsonFromStorage(id);
-    if (!raw) {
-      const msg = `No menu.json in menu-data bucket for truck_id="${id}"`;
-      console.warn(LOG, msg);
-      return { ok: false, data: null, truckId: id, error: msg };
+    if (raw) {
+      const payload = jsonToPayload(raw as Record<string, unknown>, id);
+
+      console.info(LOG, 'loaded from menu.json', {
+        truckId: id,
+        menu: payload.menu.length,
+        schedule: payload.schedule.length,
+        lastPublished: payload.lastPublished,
+        images: payload.menu.filter((m) => m.image).length,
+      });
+
+      return { ok: true, data: payload, truckId: id, error: null };
     }
 
-    const payload = jsonToPayload(raw as Record<string, unknown>, id);
+    console.warn(LOG, `No menu.json in menu-data for "${id}" — trying published_trucks fallback`);
+    const fallback = await fetchFromPublishedTrucksTable(id);
+    if (fallback && hasPublishedData(fallback)) {
+      console.info(LOG, 'loaded from published_trucks fallback', {
+        truckId: id,
+        menu: fallback.menu.length,
+        schedule: fallback.schedule.length,
+        lastPublished: fallback.lastPublished,
+      });
+      return { ok: true, data: fallback, truckId: id, error: null };
+    }
 
-    console.info(LOG, 'loaded', {
-      truckId: id,
-      menu: payload.menu.length,
-      schedule: payload.schedule.length,
-      lastPublished: payload.lastPublished,
-      images: payload.menu.filter((m) => m.image).length,
-    });
-
-    return { ok: true, data: payload, truckId: id, error: null };
+    const msg = `No menu.json in menu-data bucket for truck_id="${id}"`;
+    console.warn(LOG, msg);
+    return { ok: false, data: null, truckId: id, error: msg };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Fetch failed';
     console.error(LOG, 'exception', err);

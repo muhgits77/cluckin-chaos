@@ -12,6 +12,10 @@ export function menuJsonPath(truckId: string): string {
   return `${truckId.trim()}/menu.json`;
 }
 
+export function menuJsonFullPath(truckId: string): string {
+  return `${MENU_DATA_BUCKET}/${menuJsonPath(truckId)}`;
+}
+
 export function publicStorageUrl(bucket: string, path: string): string {
   const base = getSupabaseUrl().replace(/\/+$/, '');
   return `${base}/storage/v1/object/public/${bucket}/${path}`;

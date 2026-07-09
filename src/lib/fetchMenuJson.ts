@@ -2,7 +2,12 @@
  * Download menu.json from the menu-data Supabase Storage bucket.
  */
 
-import { MENU_DATA_BUCKET, menuJsonPath, menuJsonPublicUrl } from './menuStorage';
+import {
+  MENU_DATA_BUCKET,
+  menuJsonFullPath,
+  menuJsonPath,
+  menuJsonPublicUrl,
+} from './menuStorage';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 
 const LOG = '[fetchMenuJson]';
@@ -22,7 +27,7 @@ export async function fetchMenuJsonFromStorage(
     if (!error && data) {
       try {
         const json = JSON.parse(await data.text()) as unknown;
-        console.info(LOG, 'downloaded via client', { path, bucket: MENU_DATA_BUCKET });
+        console.info(LOG, 'downloaded via client', { fullPath: menuJsonFullPath(id) });
         return json;
       } catch (parseErr) {
         console.error(LOG, 'invalid JSON', parseErr);
