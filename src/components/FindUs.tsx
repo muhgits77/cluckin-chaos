@@ -239,7 +239,7 @@ export default function FindUs({ published }: FindUsProps) {
               <div className="space-y-2.5 pt-2 text-xs font-mono">
                 <div className="flex items-center gap-2 text-slate-300">
                   <Phone className="w-4 h-4 text-brand-red shrink-0" />
-                  <span className="font-bold">(606) 555-0187</span>
+                  <span className="font-bold">(606) 555-0196</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-300">
                   <Mail className="w-4 h-4 text-brand-red shrink-0" />
