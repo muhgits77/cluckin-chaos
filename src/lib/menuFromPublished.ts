@@ -68,7 +68,7 @@ export function publishedItemToMenuItem(item: PublishedMenuItem): MenuItem {
     image: item.image?.trim() || catalog?.image || catalogImage(name, category),
     tags: item.tags?.length
       ? item.tags
-      : ['Live from TruckDash'],
+      : ['Live menu'],
     chaosLevel: catalog?.chaosLevel ?? (category === 'mains' ? 2 : 0),
   };
 }

@@ -79,7 +79,7 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
           <span className="text-brand-red font-mono text-xs uppercase tracking-widest font-extrabold flex items-center justify-center gap-1">
             {isLiveMenu ? (
               <>
-                <Radio className="w-4.5 h-4.5 animate-pulse" /> Live from TruckDash
+                <Radio className="w-4.5 h-4.5 animate-pulse" /> Live menu board
               </>
             ) : (
               <>
@@ -101,7 +101,7 @@ export default function Menu({ onAddToCart, published }: MenuProps) {
           <div className="h-1.5 w-24 bg-gradient-to-r from-brand-yellow to-brand-red mx-auto rounded-full"></div>
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
             {isLiveMenu
-              ? 'Pulled live from TruckDash via Supabase — same board the truck publishes for the road. Prices and items stay in sync when Jesse hits Publish.'
+              ? 'Updated live by the truck — the same board Jesse posts for the road, so prices and items are always current.'
               : 'Every item is prepared raw, double-dipped in seasoned milk-wash, hand-breaded in our 12-spice dry rub, and fried fresh on location. Warning: Highly addictive southern flavors.'}
           </p>
         </div>
