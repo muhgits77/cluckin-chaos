@@ -32,7 +32,7 @@ export default function PublishedMenuGrid({
   if (items.length === 0) {
     return (
       <div className="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-400 text-sm">
-        No menu items in this TruckDash publish yet.
+        Today&apos;s menu is coming soon — check back shortly.
       </div>
     );
   }
@@ -52,7 +52,7 @@ export default function PublishedMenuGrid({
         <div className="space-y-1">
           <span className="text-brand-yellow font-mono text-[10px] uppercase tracking-widest font-extrabold inline-flex items-center gap-1.5">
             <Radio className="w-3.5 h-3.5 animate-pulse" />
-            Live from TruckDash
+            Live menu board
             {truckName ? ` · ${truckName}` : ''}
           </span>
           <h3 className="font-display font-black text-xl sm:text-2xl uppercase tracking-tight text-white flex items-center gap-2">
@@ -60,8 +60,8 @@ export default function PublishedMenuGrid({
             Full Published Menu
           </h3>
           <p className="text-slate-400 text-xs sm:text-sm max-w-xl">
-            What&apos;s on the board right now — prices and items update when the truck hits
-            Publish in TruckDash.
+            What&apos;s on the board right now — prices and items are updated live by
+            the truck.
           </p>
         </div>
         {lastPublished && (

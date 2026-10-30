@@ -71,7 +71,7 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
         <div className="text-center max-w-3xl mx-auto mb-12 space-y-4">
           <span className="text-brand-yellow font-mono text-xs uppercase tracking-widest font-extrabold inline-flex items-center justify-center gap-1.5">
             <Radio className="w-4 h-4 animate-pulse" />
-            Live from TruckDash
+            Live menu board
           </span>
           <h2
             id="live-board-heading"
@@ -81,15 +81,14 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
           </h2>
           <div className="h-1.5 w-24 bg-gradient-to-r from-brand-yellow to-brand-red mx-auto rounded-full" />
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-            Menu, specials, and weekly route — loaded from Supabase Storage when Jesse hits
-            Publish in TruckDash.
+            Menu, specials, and weekly route — updated live by the truck.
           </p>
         </div>
 
         {status === 'loading' && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-400" role="status">
             <RefreshCw className="w-8 h-8 animate-spin text-brand-yellow" />
-            <p className="font-mono text-xs uppercase tracking-widest">Loading menu-data bucket…</p>
+            <p className="font-mono text-xs uppercase tracking-widest">Loading today's menu…</p>
           </div>
         )}
 
@@ -98,35 +97,19 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 text-center space-y-3">
               <AlertCircle className="w-8 h-8 mx-auto text-brand-amber" />
               <h3 className="font-display font-black text-white uppercase tracking-tight text-lg">
-                {status === 'unconfigured'
-                  ? 'Supabase not connected'
-                  : status === 'empty'
-                    ? 'No published data yet'
-                    : 'Could not load live board'}
+                Today&apos;s menu is coming soon
               </h3>
               <p className="text-slate-400 text-sm leading-relaxed">
-                {status === 'unconfigured' && (
-                  <>
-                    Set <code className="text-brand-yellow text-xs">VITE_SUPABASE_URL</code>,{' '}
-                    <code className="text-brand-yellow text-xs">VITE_SUPABASE_ANON_KEY</code>, and{' '}
-                    <code className="text-brand-yellow text-xs">VITE_TRUCK_ID</code> in{' '}
-                    <code className="text-brand-yellow text-xs">.env.local</code> or Vercel, then
-                    redeploy.
-                  </>
-                )}
-                {status === 'empty' && (
-                  <>
-                    No row for <code className="text-brand-yellow text-xs">{truckId}</code>. In
-                    TruckDash: set Truck ID → enable Supabase Sync → Publish.
-                  </>
-                )}
-                {status === 'error' && (error || 'Check console for details.')}
+                Check back soon — we post today&apos;s stop, hours, and specials here as soon as the
+                truck is rolling.
               </p>
+              {import.meta.env.DEV && (
               <div className="text-left bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[10px] text-slate-500 space-y-1">
                 <p>truck_id: <span className="text-brand-yellow">{truckId}</span></p>
                 <p className="break-all">{configHint}</p>
                 {error && <p className="text-red-400/90">{error}</p>}
               </div>
+              )}
               <button
                 type="button"
                 onClick={reload}
@@ -201,7 +184,7 @@ export default function LiveBoard({ published, onAddToCart }: LiveBoardProps) {
                 />
               ) : (
                 <div className="bg-slate-900 border border-dashed border-amber-900/40 rounded-2xl p-6 text-center text-slate-400 text-sm">
-                  Schedule is live but menu is empty — add items in TruckDash and Publish.
+                  Today&apos;s menu is coming soon — check back shortly.
                 </div>
               )}
               <p className="text-center font-mono text-[10px] text-slate-600">

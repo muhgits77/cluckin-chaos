@@ -1,7 +1,7 @@
 # Cluckin' Chaos — Kentucky Food Truck Site
 
 Premium Lake Cumberland food truck site (Bluegrass Digital Forge).  
-Interactive menu + cart, plus a **live board** that pulls the latest menu and schedule from **TruckDash** via Supabase `published_trucks`.
+Interactive menu + cart, plus a **live board** that pulls the latest menu and schedule the truck publishes from its owner dashboard via Supabase `published_trucks`.
 
 ## Stack
 
@@ -20,9 +20,9 @@ npm run dev
 
 ### Live menu / schedule (simple JSON sync)
 
-**Primary source:** `public/menu.json` (downloaded every time you hit **Publish** in TruckDash).
+**Primary source:** `public/menu.json` (downloaded every time you hit **Publish** in the owner dashboard).
 
-1. In TruckDash, update menu / schedule / special → **Publish Updates to My Website**
+1. In the owner dashboard, update menu / schedule / special → **Publish Updates to My Website**
 2. Browser downloads `menu.json`
 3. Copy it to this repo: `public/menu.json` (replace the file)
 4. Refresh Cluckin Chaos — Live Board + Menu update immediately
@@ -37,11 +37,11 @@ Optional env:
 
 The live board polls about every 30s and on tab focus.
 
-## Supabase / TruckDash
+## Supabase / owner dashboard
 
-1. Use the **same Supabase project** as TruckDash (or any project that has the `published_trucks` table from TruckDash’s `supabase/published_trucks.sql`).
-2. RLS must allow **anon SELECT** on `published_trucks` (included in TruckDash SQL).
-3. In TruckDash, set truck id to the same value as `VITE_TRUCK_ID` (e.g. `cluckin-chaos`) and use **Publish Updates to My Website**.
+1. Use the **same Supabase project** as the owner dashboard (or any project that has the `published_trucks` table from the dashboard’s `supabase/published_trucks.sql`).
+2. RLS must allow **anon SELECT** on `published_trucks` (included in the dashboard SQL).
+3. In the owner dashboard, set truck id to the same value as `VITE_TRUCK_ID` (e.g. `cluckin-chaos`) and use **Publish Updates to My Website**.
 
 ### What the live board shows
 
@@ -69,7 +69,7 @@ In **Project → Settings → Environment Variables**, add for **Production** an
 |------|--------|
 | `VITE_SUPABASE_URL` | `https://YOUR_PROJECT_REF.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | your Supabase anon public key |
-| `VITE_TRUCK_ID` | `cluckin-chaos` (or your TruckDash truck id) |
+| `VITE_TRUCK_ID` | `cluckin-chaos` (or your dashboard truck id) |
 
 > Vite only exposes variables prefixed with `VITE_`. Set them **before** build; changing env vars requires a **redeploy**.
 
@@ -88,7 +88,7 @@ After saving env vars:
 - **Deployments** → open the latest deployment → **⋯ → Redeploy**  
   or push a new commit to trigger a build  
 
-Confirm the live board loads (no “Live board not connected yet” message). If empty, publish once from TruckDash with the matching `truck_id`.
+Confirm the live board loads (no “Live board not connected yet” message). If empty, publish once from the owner dashboard with the matching `truck_id`.
 
 ### CLI alternative
 
@@ -120,4 +120,4 @@ src/
 
 ## Brand notes
 
-Bluegrass Digital Forge — premium Kentucky food truck styling: warm slate, brand red / amber, Lake Cumberland authenticity. Static menu images stay local and photorealistic; live board prices/locations come from TruckDash.
+Bluegrass Digital Forge — premium Kentucky food truck styling: warm slate, brand red / amber, Lake Cumberland authenticity. Static menu images stay local and photorealistic; live board prices/locations are updated live by the truck.
